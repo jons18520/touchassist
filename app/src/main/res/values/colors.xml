@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- 自定义颜色 -->
+    <color name="control_panel_bg">#CC000000</color>
+    <color name="target_point_color">#FFFF4D73</color>
+    <color name="button_bg">#FF2196F3</color>
+
+    <color name="floating_panel_fill">#CCEEF2F7</color>
+    <color name="floating_panel_stroke">#66BFC8D6</color>
+    <color name="floating_button_fill">#FFFDFEFF</color>
+    <color name="floating_button_pressed_fill">#FFF3F7FB</color>
+    <color name="floating_button_stroke">#26AAB4C3</color>
+    <color name="floating_button_ripple">#33222B45</color>
+    <color name="floating_button_danger_fill">#F2FFEEF1</color>
+    <color name="floating_button_danger_pressed_fill">#FFFBE2E8</color>
+    <color name="floating_icon_tint">#FF1F2937</color>
+    <color name="target_outer_fill">#CCFFFFFF</color>
+    <color name="target_outer_pressed_fill">#E6FFF3F6</color>
+    <color name="target_outer_stroke">#80FFFFFF</color>
+    <color name="target_middle_fill">#33FF4D73</color>
+    <color name="target_middle_pressed_fill">#4DFF4D73</color>
+    <color name="target_middle_stroke">#CCFF4D73</color>
+    <color name="target_ripple">#33FF4D73</color>
+</resources>

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:paddingHorizontal="4dp"
+    android:paddingVertical="4dp"
+    android:background="@drawable/bg_floating_panel"
+    android:elevation="10dp">
+
+    <ImageButton
+        android:id="@+id/btn_add"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginVertical="2dp"
+        android:background="@drawable/bg_floating_button"
+        android:src="@drawable/ic_add"
+        android:contentDescription="@string/control_add"
+        android:padding="7dp"
+        android:scaleType="centerInside"
+        android:tint="@color/floating_icon_tint" />
+
+    <ImageButton
+        android:id="@+id/btn_edit"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginVertical="2dp"
+        android:background="@drawable/bg_floating_button"
+        android:src="@drawable/ic_edit"
+        android:contentDescription="@string/control_edit"
+        android:padding="7dp"
+        android:scaleType="centerInside"
+        android:tint="@color/floating_icon_tint" />
+
+    <ImageButton
+        android:id="@+id/btn_play_pause"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginVertical="2dp"
+        android:background="@drawable/bg_floating_button"
+        android:src="@drawable/ic_play"
+        android:contentDescription="@string/control_play_pause"
+        android:padding="7dp"
+        android:scaleType="centerInside"
+        android:tint="@color/floating_icon_tint" />
+
+    <ImageButton
+        android:id="@+id/btn_stop"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginVertical="2dp"
+        android:background="@drawable/bg_floating_button_danger"
+        android:src="@drawable/ic_stop"
+        android:contentDescription="@string/control_stop_clicking"
+        android:padding="7dp"
+        android:scaleType="centerInside"
+        android:tint="@color/floating_icon_tint" />
+
+    <ImageButton
+        android:id="@+id/btn_exit"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginVertical="2dp"
+        android:background="@drawable/bg_floating_button_danger"
+        android:src="@drawable/ic_close"
+        android:contentDescription="@string/control_exit_app"
+        android:padding="7dp"
+        android:scaleType="centerInside"
+        android:tint="@color/floating_icon_tint" />
+
+</LinearLayout>

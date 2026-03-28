@@ -1,0 +1,38 @@
+.ace-tool/
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local SDK config
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Claude / local tooling
+.claude/
+
+# Trellis local workspace artifacts
+.trellis/
+
+# Misc
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystore (敏感文件，不提交)
+*.jks
+*.keystore
+
+AGENTS.md
+CLAUDE.md

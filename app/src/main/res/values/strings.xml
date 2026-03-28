@@ -1,0 +1,59 @@
+<resources>
+    <string name="app_name">触控助手</string>
+    <string name="accessibility_service_label">触控助手服务</string>
+    <string name="accessibility_service_description">此服务需要通过模拟触控来执行自动化任务。请放心，我们不会收集您的任何个人信息。</string>
+
+    <!-- 权限相关 -->
+    <string name="permission_overlay_title">需要悬浮窗权限</string>
+    <string name="permission_overlay_message">请授予悬浮窗权限以显示控制面板</string>
+    <string name="permission_accessibility_title">需要无障碍权限</string>
+    <string name="permission_accessibility_message">请在设置中启用无障碍服务以使用触控助手</string>
+    <string name="grant_permission">授予权限</string>
+    <string name="start_service">启动服务</string>
+
+    <!-- 设置对话框 -->
+    <string name="settings_title">设置</string>
+    <string name="click_interval">触发间隔 (毫秒)</string>
+    <string name="stop_condition">停止条件</string>
+    <string name="stop_by_count">按次数停止</string>
+    <string name="stop_by_time">按时间停止</string>
+    <string name="click_count_hint">例如: 100</string>
+    <string name="click_duration_hint">持续时间(秒)</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+
+    <!-- 悬浮面板 -->
+    <string name="control_play_pause">播放/暂停</string>
+    <string name="control_add">新增目标</string>
+    <string name="control_edit">编辑模式</string>
+    <string name="control_stop_clicking">停止</string>
+    <string name="control_exit_app">退出应用</string>
+    <string name="edit_mode_on">编辑中</string>
+    <string name="edit_mode_off">编辑完成</string>
+
+    <!-- 点击目标操作 -->
+    <string name="target_settings">设置</string>
+    <string name="target_delete">删除</string>
+
+    <!-- 点击目标设置对话框 -->
+    <string name="target_settings_title">触控目标设置</string>
+    <string name="click_type">触控模式</string>
+    <string name="click_type_single">单次触控</string>
+    <string name="click_type_long_press">持续触控</string>
+    <string name="click_interval_label">间隔时间 (毫秒)</string>
+    <string name="swipe_distance_label">滑动距离 (像素)</string>
+    <string name="swipe_direction_label">滑动方向</string>
+    <string name="swipe_direction_up">上</string>
+    <string name="swipe_direction_down">下</string>
+    <string name="swipe_direction_left">左</string>
+    <string name="swipe_direction_right">右</string>
+    <string name="max_targets_reached">已达到最大目标数量限制</string>
+    <string name="exit_edit_mode_first">请先关闭编辑模式</string>
+    <string name="exit_confirm_title">确认退出</string>
+    <string name="exit_confirm_message">退出后将停止服务并关闭悬浮窗，是否继续？</string>
+    <string name="exit_confirm_action">退出</string>
+
+    <!-- 通知 -->
+    <string name="service_running">触控助手服务正在运行</string>
+    <string name="service_stopped">触控助手服务已停止</string>
+</resources>
