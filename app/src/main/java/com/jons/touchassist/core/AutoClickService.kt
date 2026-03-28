@@ -315,13 +315,7 @@ class AutoClickService : AccessibilityService() {
         stopSelf()
     }
 
-    fun updateSettings(
-        interval: Long,
-        stopByCount: Boolean = false,
-        stopByTime: Boolean = false,
-        maxCount: Int = 0,
-        maxDuration: Long = 0L
-    ) {
+    fun updateSettings(interval: Long) {
         clickTargetsById.entries.forEach { (id, target) ->
             clickTargetsById[id] = target.copy(interval = interval)
             if (target.clickType == ClickType.SINGLE) {

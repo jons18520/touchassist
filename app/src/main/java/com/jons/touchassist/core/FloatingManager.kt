@@ -15,9 +15,6 @@ object FloatingManager {
     private const val TAG = "FloatingManager"
     private const val PREFS_NAME = "touch_assist_settings"
     private const val KEY_CLICK_INTERVAL = "click_interval"
-    private const val KEY_STOP_CONDITION = "stop_condition"
-    private const val KEY_MAX_COUNT = "max_count"
-    private const val KEY_MAX_DURATION = "max_duration"
     private const val KEY_TARGET_X = "target_x"
     private const val KEY_TARGET_Y = "target_y"
     private const val KEY_TARGETS = "click_targets"
@@ -266,18 +263,12 @@ object FloatingManager {
             val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_settings, null)
 
             val rgClickType = dialogView.findViewById<RadioGroup>(R.id.rg_click_type)
-            val rbSingle = dialogView.findViewById<RadioButton>(R.id.rb_click_type_single)
-            val rbLongPress = dialogView.findViewById<RadioButton>(R.id.rb_click_type_long_press)
             val tvIntervalLabel = dialogView.findViewById<TextView>(R.id.tv_interval_label)
             val etInterval = dialogView.findViewById<EditText>(R.id.et_interval)
             val tvSwipeDistanceLabel = dialogView.findViewById<TextView>(R.id.tv_swipe_distance_label)
             val etSwipeDistance = dialogView.findViewById<EditText>(R.id.et_swipe_distance)
             val tvSwipeDirectionLabel = dialogView.findViewById<TextView>(R.id.tv_swipe_direction_label)
             val rgSwipeDirection = dialogView.findViewById<RadioGroup>(R.id.rg_swipe_direction)
-            val rbDirUp = dialogView.findViewById<RadioButton>(R.id.rb_dir_up)
-            val rbDirDown = dialogView.findViewById<RadioButton>(R.id.rb_dir_down)
-            val rbDirLeft = dialogView.findViewById<RadioButton>(R.id.rb_dir_left)
-            val rbDirRight = dialogView.findViewById<RadioButton>(R.id.rb_dir_right)
 
             // 加载当前目标设置
             when (target.clickType) {
@@ -441,16 +432,8 @@ object FloatingManager {
 
     fun restorePersistedSettings() {
         val prefs = sharedPreferences ?: return
-
         val interval = prefs.getLong(KEY_CLICK_INTERVAL, 1000L)
-        val stopCondition = prefs.getString(KEY_STOP_CONDITION, "none")
-        val maxCount = prefs.getInt(KEY_MAX_COUNT, 100)
-        val maxDuration = prefs.getLong(KEY_MAX_DURATION, 60L)
-
-        val stopByCount = stopCondition == "count"
-        val stopByTime = stopCondition == "time"
-
-        service?.updateSettings(interval, stopByCount, stopByTime, maxCount, maxDuration)
+        service?.updateSettings(interval)
     }
 
     private fun persistTargetPointPosition(target: ClickTarget) {
