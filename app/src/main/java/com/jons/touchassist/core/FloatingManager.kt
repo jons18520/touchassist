@@ -164,7 +164,6 @@ object FloatingManager {
             addButton = view.findViewById(R.id.btn_add)
             editButton = view.findViewById(R.id.btn_edit)
             val removeButton = view.findViewById<ImageButton>(R.id.btn_remove)
-            val stopButton = view.findViewById<ImageButton>(R.id.btn_stop)
             val exitButton = view.findViewById<ImageButton>(R.id.btn_exit)
 
             addButton?.setOnClickListener {
@@ -189,10 +188,6 @@ object FloatingManager {
                 }
             }
 
-            stopButton?.setOnClickListener {
-                service?.stopClickTask()
-            }
-
             exitButton?.setOnClickListener {
                 showExitConfirmationDialog()
             }
@@ -202,7 +197,6 @@ object FloatingManager {
                 addButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 removeButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 editButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
-                stopButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 exitButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
             }
 
@@ -412,9 +406,13 @@ object FloatingManager {
 
     private fun updatePlayPauseButtonEnabledState() {
         val hasTargets = clickTargets.isNotEmpty()
-        val canStart = (!isEditMode || service?.isClicking == true) && hasTargets
+        val isClicking = service?.isClicking == true
+        val canStart = (!isEditMode || isClicking) && hasTargets
         playPauseButton?.isEnabled = canStart
         playPauseButton?.alpha = if (canStart) 1f else 0.5f
+        val canEdit = !isClicking
+        editButton?.isEnabled = canEdit
+        editButton?.alpha = if (canEdit) 1f else 0.5f
     }
 
     fun updateControlPanelState(isPlaying: Boolean) {
