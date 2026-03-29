@@ -43,11 +43,8 @@ class AutoClickService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val clickTargetsById = ConcurrentHashMap<String, ClickTargetInfo>()
-    private val nextSingleRunAtById = ConcurrentHashMap<String, Long>()
-    private val singleClickOrder = mutableListOf<String>()
-    private var singleClickIndex = 0
+    private val singleClickJobs = ConcurrentHashMap<String, Job>()
 
-    private var singleClickSchedulerJob: Job? = null
     private val activeLongPressRunnables = ConcurrentHashMap<String, Runnable>()
     private val handler = Handler(Looper.getMainLooper())
 
@@ -97,81 +94,29 @@ class AutoClickService : AccessibilityService() {
         FloatingManager.setTargetPointTouchable(false)
         FloatingManager.updateControlPanelState(true)
 
-        val now = System.currentTimeMillis()
         clickTargetsById.values.forEach { target ->
             if (target.clickType == ClickType.SINGLE) {
-                nextSingleRunAtById[target.id] = now
+                startSingleClickJob(target.id)
             } else {
                 startOrRestartLongPressTask(target.id)
             }
         }
-
-        if (singleClickIndex !in singleClickOrder.indices) {
-            singleClickIndex = 0
-        }
-
-        startSingleClickScheduler()
     }
 
-    private fun startSingleClickScheduler() {
-        singleClickSchedulerJob?.cancel()
-        singleClickSchedulerJob = serviceScope.launch {
+    private fun startSingleClickJob(targetId: String) {
+        singleClickJobs[targetId]?.cancel()
+        singleClickJobs[targetId] = serviceScope.launch {
             try {
-                var initialBurstDone = false
                 while (isActive && isClickingInternal.get()) {
-                    val singles = getSortedSingleTargets()
-                    if (singles.isEmpty()) {
-                        delay(100L)
-                        continue
-                    }
-
-                    if (!initialBurstDone) {
-                        singles.forEachIndexed { index, target ->
-                            if (index > 0) {
-                                delay(jitterDelay(20L, 0.5))
-                            }
-                            val success = performSingleClick(target)
-                            if (!success) {
-                                Log.w("TouchService", "Target ${target.id} click failed")
-                            }
-                        }
-                        initialBurstDone = true
-                    }
-
-                    var previousInterval = 0L
-                    for (target in singles) {
-                        val waitTime = (target.interval - previousInterval).coerceAtLeast(0L)
-                        if (waitTime > 0) {
-                            delay(jitterDelay(waitTime))
-                        }
-
-                        val latestTarget = clickTargetsById[target.id]
-                        if (latestTarget == null || latestTarget.clickType != ClickType.SINGLE) {
-                            continue
-                        }
-
-                        val success = performSingleClick(latestTarget)
-                        if (!success) {
-                            Log.w("TouchService", "Target ${latestTarget.id} click failed")
-                        }
-
-                        previousInterval = latestTarget.interval
-                    }
+                    val target = clickTargetsById[targetId] ?: break
+                    if (target.clickType != ClickType.SINGLE) break
+                    performSingleClick(target)
+                    delay(jitterDelay(target.interval))
                 }
             } catch (_: CancellationException) {
             }
+            singleClickJobs.remove(targetId)
         }
-    }
-
-    private fun getSortedSingleTargets(): List<ClickTargetInfo> {
-        if (singleClickOrder.isEmpty()) {
-            return emptyList()
-        }
-
-        val orderIndex = singleClickOrder.withIndex().associate { it.value to it.index }
-        return singleClickOrder.mapNotNull { clickTargetsById[it] }
-            .filter { it.clickType == ClickType.SINGLE }
-            .sortedWith(compareBy<ClickTargetInfo> { it.interval }.thenBy { orderIndex[it.id] ?: 0 })
     }
 
     private fun startOrRestartLongPressTask(targetId: String) {
@@ -277,11 +222,8 @@ class AutoClickService : AccessibilityService() {
     }
 
     private fun stopAllTasks() {
-        singleClickSchedulerJob?.cancel()
-        singleClickSchedulerJob = null
-        nextSingleRunAtById.clear()
-        singleClickOrder.clear()
-        singleClickIndex = 0
+        singleClickJobs.values.forEach { it.cancel() }
+        singleClickJobs.clear()
 
         activeLongPressRunnables.values.forEach { handler.removeCallbacks(it) }
         activeLongPressRunnables.clear()
@@ -317,21 +259,6 @@ class AutoClickService : AccessibilityService() {
     fun updateSettings(interval: Long) {
         clickTargetsById.entries.forEach { (id, target) ->
             clickTargetsById[id] = target.copy(interval = interval)
-            if (target.clickType == ClickType.SINGLE) {
-                nextSingleRunAtById[id] = System.currentTimeMillis() + interval
-            }
-        }
-
-        if (singleClickOrder.isNotEmpty()) {
-            singleClickOrder.clear()
-            singleClickOrder.addAll(
-                clickTargetsById.values
-                    .filter { it.clickType == ClickType.SINGLE }
-                    .map { it.id }
-            )
-            if (singleClickIndex !in singleClickOrder.indices) {
-                singleClickIndex = 0
-            }
         }
     }
 
@@ -339,51 +266,33 @@ class AutoClickService : AccessibilityService() {
         val newIds = targets.map { it.id }.toSet()
         val oldIds = clickTargetsById.keys.toSet()
 
-        val newSingleOrder = targets.filter { it.clickType == ClickType.SINGLE }.map { it.id }
-        singleClickOrder.clear()
-        singleClickOrder.addAll(newSingleOrder)
-        if (singleClickIndex !in singleClickOrder.indices) {
-            singleClickIndex = 0
-        } else {
-            val currentId = singleClickOrder[singleClickIndex]
-            if (!newSingleOrder.contains(currentId)) {
-                singleClickIndex = 0
-            }
-        }
-
         targets.forEach { target ->
             val oldTarget = clickTargetsById[target.id]
             clickTargetsById[target.id] = target
 
-            if (target.clickType == ClickType.SINGLE && oldTarget == null) {
-                nextSingleRunAtById[target.id] = System.currentTimeMillis() + target.interval
-            }
-
             if (isClickingInternal.get()) {
                 if (oldTarget == null) {
+                    // 新增目标，立即启动
+                    if (target.clickType == ClickType.SINGLE) {
+                        startSingleClickJob(target.id)
+                    } else {
+                        startOrRestartLongPressTask(target.id)
+                    }
+                } else if (oldTarget.clickType != target.clickType) {
+                    // 类型变化，重启
+                    if (oldTarget.clickType == ClickType.LONG_PRESS) {
+                        activeLongPressRunnables.remove(target.id)?.let { handler.removeCallbacks(it) }
+                    } else {
+                        singleClickJobs.remove(target.id)?.cancel()
+                    }
                     if (target.clickType == ClickType.LONG_PRESS) {
                         startOrRestartLongPressTask(target.id)
                     } else {
-                        nextSingleRunAtById[target.id] = System.currentTimeMillis() + target.interval
+                        startSingleClickJob(target.id)
                     }
-                } else {
-                    if (oldTarget.clickType != target.clickType) {
-                        if (oldTarget.clickType == ClickType.LONG_PRESS) {
-                            activeLongPressRunnables.remove(target.id)?.let { handler.removeCallbacks(it) }
-                        } else {
-                            nextSingleRunAtById.remove(target.id)
-                        }
-
-                        if (target.clickType == ClickType.LONG_PRESS) {
-                            startOrRestartLongPressTask(target.id)
-                        } else {
-                            nextSingleRunAtById[target.id] = System.currentTimeMillis() + target.interval
-                        }
-                    } else if (target.clickType == ClickType.LONG_PRESS && oldTarget.swipeDistance != target.swipeDistance) {
-                        startOrRestartLongPressTask(target.id)
-                    } else if (target.clickType == ClickType.SINGLE && oldTarget.interval != target.interval) {
-                        nextSingleRunAtById[target.id] = System.currentTimeMillis() + target.interval
-                    }
+                } else if (target.clickType == ClickType.LONG_PRESS &&
+                    (oldTarget.swipeDistance != target.swipeDistance || oldTarget.swipeAngle != target.swipeAngle)) {
+                    startOrRestartLongPressTask(target.id)
                 }
             }
         }
@@ -391,17 +300,11 @@ class AutoClickService : AccessibilityService() {
         val removedIds = oldIds - newIds
         removedIds.forEach { id ->
             clickTargetsById.remove(id)
-            nextSingleRunAtById.remove(id)
+            singleClickJobs.remove(id)?.cancel()
             activeLongPressRunnables.remove(id)?.let { handler.removeCallbacks(it) }
         }
 
         Log.d("TouchService", "Updated ${targets.size} targets")
-        targets.forEach { target ->
-            Log.d(
-                "TouchService",
-                "  Target ${target.id}: (${target.x}, ${target.y}) ${target.clickType} interval=${target.interval} distance=${target.swipeDistance}"
-            )
-        }
     }
 
     fun updateTargetPosition(x: Float, y: Float) {
