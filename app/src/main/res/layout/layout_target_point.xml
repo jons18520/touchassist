@@ -1,50 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="48dp"
-    android:layout_height="48dp"
-    android:padding="3dp">
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
 
-    <!-- 目标点图标 -->
+    <!-- 十字准星图标 -->
     <ImageView
         android:id="@+id/iv_target_icon"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@drawable/bg_target_point_apple"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@drawable/ic_crosshair"
         android:contentDescription="目标点"
-        android:padding="8dp"
-        android:src="@drawable/ic_target"
-        android:scaleType="centerInside" />
+        android:scaleType="fitXY" />
 
     <!-- 编辑模式下的操作按钮容器 -->
     <FrameLayout
         android:id="@+id/fl_action_buttons"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:visibility="gone">
 
         <!-- 左上角：设置按钮 -->
         <ImageButton
             android:id="@+id/btn_target_settings"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
             android:layout_gravity="top|start"
             android:background="@drawable/bg_floating_button"
             android:src="@drawable/ic_settings"
             android:contentDescription="@string/target_settings"
-            android:padding="3dp"
+            android:padding="2dp"
             android:scaleType="centerInside"
             android:tint="@color/floating_icon_tint" />
 
         <!-- 右上角：删除按钮 -->
         <ImageButton
             android:id="@+id/btn_target_delete"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
             android:layout_gravity="top|end"
             android:background="@drawable/bg_floating_button_danger"
             android:src="@drawable/ic_delete"
             android:contentDescription="@string/target_delete"
-            android:padding="3dp"
+            android:padding="2dp"
             android:scaleType="centerInside"
             android:tint="@color/floating_icon_tint" />
     </FrameLayout>

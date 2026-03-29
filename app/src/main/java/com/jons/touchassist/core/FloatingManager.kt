@@ -22,7 +22,7 @@ object FloatingManager {
     private const val MAX_TARGETS = 5
 
     // 目标视图尺寸（dp）- 必须与 layout_target_point.xml 中的尺寸一致
-    private const val TARGET_VIEW_SIZE_DP = 48
+    private const val TARGET_VIEW_SIZE_DP = 36
 
     private var windowManager: WindowManager? = null
     private var service: AutoClickService? = null
@@ -136,10 +136,14 @@ object FloatingManager {
 
     private fun updateTargetActionButtonsVisibility(target: ClickTarget) {
         val actionContainer = target.view?.findViewById<FrameLayout>(R.id.fl_action_buttons)
+        val iconView = target.view?.findViewById<ImageView>(R.id.iv_target_icon)
         if (isEditMode) {
+            target.view?.visibility = View.VISIBLE
             actionContainer?.visibility = View.VISIBLE
+            iconView?.visibility = View.VISIBLE
         } else {
             actionContainer?.visibility = View.GONE
+            iconView?.visibility = View.INVISIBLE
         }
     }
 
@@ -457,7 +461,7 @@ object FloatingManager {
                 clickX = location[0] + iconView.width / 2f
                 clickY = location[1] + iconView.height / 2f
             } else {
-                val fallbackSize = 64f * (service?.resources?.displayMetrics?.density ?: 1f)
+                val fallbackSize = TARGET_VIEW_SIZE_DP * (service?.resources?.displayMetrics?.density ?: 1f)
                 clickX = t.x + fallbackSize / 2f
                 clickY = t.y + fallbackSize / 2f
             }
