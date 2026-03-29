@@ -60,7 +60,6 @@ class AutoClickService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         FloatingManager.init(this)
-        FloatingManager.restorePersistedSettings()
         showOverlaysIfRequested()
     }
 
@@ -417,7 +416,7 @@ class AutoClickService : AccessibilityService() {
         }
 
         FloatingManager.showControlPanel()
-        FloatingManager.showTargetPoint()
+        FloatingManager.restorePersistedSettings()
     }
 
     private fun jitter(value: Float, radius: Int = 3): Float {

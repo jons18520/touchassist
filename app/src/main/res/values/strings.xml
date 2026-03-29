@@ -25,6 +25,7 @@
     <!-- 悬浮面板 -->
     <string name="control_play_pause">播放/暂停</string>
     <string name="control_add">新增目标</string>
+    <string name="control_remove">删除目标</string>
     <string name="control_edit">编辑模式</string>
     <string name="control_stop_clicking">停止</string>
     <string name="control_exit_app">退出应用</string>

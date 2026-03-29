@@ -8,6 +8,8 @@ import android.util.Log
 import android.view.*
 import android.widget.*
 import com.jons.touchassist.R
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.UUID
 
 object FloatingManager {
@@ -51,8 +53,7 @@ object FloatingManager {
         var swipeAngle: Int = 270,
         var view: View? = null,
         var params: WindowManager.LayoutParams? = null,
-        var settingsButton: ImageButton? = null,
-        var deleteButton: ImageButton? = null
+        var settingsButton: ImageButton? = null
     )
 
     enum class ClickType { SINGLE, LONG_PRESS }
@@ -113,19 +114,14 @@ object FloatingManager {
 
         windowManager?.addView(target.view, target.params)
 
-        // 获取设置和删除按钮引用
+        // 获取设置按钮引用
         target.settingsButton = target.view?.findViewById(R.id.btn_target_settings)
-        target.deleteButton = target.view?.findViewById(R.id.btn_target_delete)
 
         // 设置按钮事件
         target.settingsButton?.setOnClickListener {
             isEditMode = true
             updateTargetActionButtonsVisibility(target)
             showTargetSettingsDialog(target)
-        }
-
-        target.deleteButton?.setOnClickListener {
-            deleteTarget(target)
         }
 
         // 更新按钮可见性 - 只在编辑模式显示
@@ -156,10 +152,10 @@ object FloatingManager {
         target.view = null
         target.params = null
         target.settingsButton = null
-        target.deleteButton = null
 
         // 更新服务中的目标列表
         syncTargetsToService()
+        persistAllTargets()
     }
 
     private fun setupControlPanelButtons() {
@@ -167,11 +163,16 @@ object FloatingManager {
             playPauseButton = view.findViewById(R.id.btn_play_pause)
             addButton = view.findViewById(R.id.btn_add)
             editButton = view.findViewById(R.id.btn_edit)
+            val removeButton = view.findViewById<ImageButton>(R.id.btn_remove)
             val stopButton = view.findViewById<ImageButton>(R.id.btn_stop)
             val exitButton = view.findViewById<ImageButton>(R.id.btn_exit)
 
             addButton?.setOnClickListener {
                 addNewTarget()
+            }
+
+            removeButton?.setOnClickListener {
+                deleteLastTarget()
             }
 
             editButton?.setOnClickListener {
@@ -199,6 +200,7 @@ object FloatingManager {
             if (controlPanelView != null && controlPanelParams != null) {
                 playPauseButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 addButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
+                removeButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 editButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 stopButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 exitButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
@@ -207,6 +209,12 @@ object FloatingManager {
             updatePlayPauseButtonEnabledState()
 
         }
+    }
+
+    private fun deleteLastTarget() {
+        if (clickTargets.isEmpty()) return
+        val target = clickTargets.last()
+        deleteTarget(target)
     }
 
     private fun addNewTarget() {
@@ -231,6 +239,7 @@ object FloatingManager {
 
         // 更新服务中的目标列表
         syncTargetsToService()
+        persistAllTargets()
 
         Log.d(TAG, "Added new target at (${newTarget.x}, ${newTarget.y})")
 
@@ -364,6 +373,7 @@ object FloatingManager {
 
                     // 更新服务中的目标
                     syncTargetsToService()
+                    persistAllTargets()
 
                     Log.d(TAG, "Updated target ${target.id}: type=$clickType, interval=$interval, distance=$swipeDistance")
                 }
@@ -438,6 +448,28 @@ object FloatingManager {
         val prefs = sharedPreferences ?: return
         val interval = prefs.getLong(KEY_CLICK_INTERVAL, 1000L)
         service?.updateSettings(interval)
+
+        val targetsJson = prefs.getString(KEY_TARGETS, null) ?: return
+        try {
+            val array = JSONArray(targetsJson)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val target = ClickTarget(
+                    id = obj.getString("id"),
+                    x = obj.getDouble("x").toFloat(),
+                    y = obj.getDouble("y").toFloat(),
+                    clickType = try { ClickType.valueOf(obj.getString("clickType")) } catch (_: Exception) { ClickType.SINGLE },
+                    interval = obj.getLong("interval"),
+                    swipeDistance = obj.getInt("swipeDistance"),
+                    swipeAngle = obj.getInt("swipeAngle")
+                )
+                clickTargets.add(target)
+                createTargetView(target)
+            }
+            syncTargetsToService()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore targets: ${e.message}")
+        }
     }
 
     private fun persistTargetPointPosition(target: ClickTarget) {
@@ -446,6 +478,22 @@ object FloatingManager {
             putInt(KEY_TARGET_Y, target.y.toInt())
             apply()
         }
+    }
+
+    private fun persistAllTargets() {
+        val array = JSONArray()
+        clickTargets.forEach { t ->
+            val obj = JSONObject()
+            obj.put("id", t.id)
+            obj.put("x", t.x.toDouble())
+            obj.put("y", t.y.toDouble())
+            obj.put("clickType", t.clickType.name)
+            obj.put("interval", t.interval)
+            obj.put("swipeDistance", t.swipeDistance)
+            obj.put("swipeAngle", t.swipeAngle)
+            array.put(obj)
+        }
+        sharedPreferences?.edit()?.putString(KEY_TARGETS, array.toString())?.apply()
     }
 
     fun syncTargetsToService() {
@@ -630,7 +678,7 @@ object FloatingManager {
                         target?.let {
                             it.x = newX.toFloat()
                             it.y = newY.toFloat()
-                            persistTargetPointPosition(it)
+                            persistAllTargets()
                         }
                         true
                     } else {
@@ -652,7 +700,7 @@ object FloatingManager {
                         target?.let {
                             it.x = params.x.toFloat()
                             it.y = params.y.toFloat()
-                            persistTargetPointPosition(it)
+                            persistAllTargets()
                             syncTargetsToService()
                             Log.d(TAG, "Drag ended for target ${it.id}: (${it.x}, ${it.y})")
                         }
@@ -682,7 +730,6 @@ object FloatingManager {
             target.view = null
             target.params = null
             target.settingsButton = null
-            target.deleteButton = null
         }
         clickTargets.clear()
     }
