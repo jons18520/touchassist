@@ -15,18 +15,21 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 class AutoClickService : AccessibilityService() {
 
     companion object {
         const val ACTION_SHOW_OVERLAYS = "com.jons.touchassist.action.SHOW_OVERLAYS"
-        private const val LONG_PRESS_DURATION = 400L  // 一次按下+滑动的时长(ms)
+        private const val LONG_PRESS_DURATION = 400L
+        private const val TAG = "AutoClickService"
     }
 
     data class ClickTargetInfo(
@@ -44,14 +47,18 @@ class AutoClickService : AccessibilityService() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val clickTargetsById = ConcurrentHashMap<String, ClickTargetInfo>()
     private val singleClickJobs = ConcurrentHashMap<String, Job>()
-
-    private val activeLongPressRunnables = ConcurrentHashMap<String, Runnable>()
+    private val longPressJobs = ConcurrentHashMap<String, Job>()
     private val handler = Handler(Looper.getMainLooper())
+    private val activeLongPressRunnables = ConcurrentHashMap<String, Runnable>()
 
+    // 每个目标独立的 GestureExecutor，避免并发冲突
+    private val gestureExecutors = ConcurrentHashMap<String, GestureExecutor>()
+
+    // StateFlow for click state - replaces AtomicBoolean
+    private val _isClicking = MutableStateFlow(false)
+    val isClickingState: StateFlow<Boolean> = _isClicking.asStateFlow()
     val isClicking: Boolean
-        get() = isClickingInternal.get()
-
-    private val isClickingInternal = AtomicBoolean(false)
+        get() = _isClicking.value
     private var shouldShowOverlays = false
 
     override fun onServiceConnected() {
@@ -73,8 +80,7 @@ class AutoClickService : AccessibilityService() {
         Log.w("TouchService", "Accessibility service interrupted")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onDestroy() {
         super.onDestroy()
@@ -85,7 +91,7 @@ class AutoClickService : AccessibilityService() {
 
     @Synchronized
     fun startClickTask() {
-        if (!isClickingInternal.compareAndSet(false, true)) {
+        if (_isClicking.value) {
             return
         }
 
@@ -93,6 +99,8 @@ class AutoClickService : AccessibilityService() {
         FloatingManager.setClickingState(true)
         FloatingManager.setTargetPointTouchable(false)
         FloatingManager.updateControlPanelState(true)
+
+        _isClicking.value = true
 
         clickTargetsById.values.forEach { target ->
             if (target.clickType == ClickType.SINGLE) {
@@ -105,92 +113,34 @@ class AutoClickService : AccessibilityService() {
 
     private fun startSingleClickJob(targetId: String) {
         singleClickJobs[targetId]?.cancel()
-        singleClickJobs[targetId] = serviceScope.launch {
+        // 为每个目标创建独立的 GestureExecutor
+        val executor = GestureExecutor()
+        gestureExecutors[targetId] = executor
+
+        val job = serviceScope.launch {
             try {
-                while (isActive && isClickingInternal.get()) {
+                while (isActive && _isClicking.value) {
                     val target = clickTargetsById[targetId] ?: break
                     if (target.clickType != ClickType.SINGLE) break
-                    performSingleClick(target)
+
+                    performSingleClick(target, executor)
+
+                    if (!isActive || !_isClicking.value) break
+
                     delay(jitterDelay(target.interval))
                 }
             } catch (_: CancellationException) {
+                // 预期的取消
             }
             singleClickJobs.remove(targetId)
+            gestureExecutors.remove(targetId)
         }
+        singleClickJobs[targetId] = job
     }
 
-    private fun startOrRestartLongPressTask(targetId: String) {
-        activeLongPressRunnables.remove(targetId)?.let { handler.removeCallbacks(it) }
-
-        val target = clickTargetsById[targetId] ?: return
-        if (target.clickType != ClickType.LONG_PRESS) {
-            return
-        }
-
-        val swipeDistancePx = target.swipeDistance.coerceAtLeast(0)
-
-        lateinit var runnable: Runnable
-        runnable = Runnable {
-            if (!isClickingInternal.get()) return@Runnable
-
-            val latestTarget = clickTargetsById[targetId] ?: return@Runnable
-            if (latestTarget.clickType != ClickType.LONG_PRESS) {
-                activeLongPressRunnables.remove(targetId)
-                return@Runnable
-            }
-
-            val path = Path()
-            val startX = jitter(latestTarget.x)
-            val startY = jitter(latestTarget.y)
-
-            if (swipeDistancePx > 0) {
-                val angleRad = Math.toRadians(latestTarget.swipeAngle.toDouble())
-                val dx = (kotlin.math.cos(angleRad) * swipeDistancePx).toInt()
-                val dy = (kotlin.math.sin(angleRad) * swipeDistancePx).toInt()
-                path.moveTo(startX, startY)
-                path.lineTo(jitter(startX + dx, 2), jitter(startY + dy, 2))
-            } else {
-                path.moveTo(startX, startY)
-            }
-
-            Log.d(
-                "TouchService",
-                "Long press $targetId swipe=${latestTarget.swipeDistance}px angle=${latestTarget.swipeAngle}°"
-            )
-
-            val duration = jitterDuration(LONG_PRESS_DURATION, 100L)
-            val strokeDescription = GestureDescription.StrokeDescription(path, 0, duration)
-            val gestureDescription = GestureDescription.Builder()
-                .addStroke(strokeDescription)
-                .build()
-
-            val callback = object : GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription?) {
-                    if (isClickingInternal.get() && clickTargetsById[targetId]?.clickType == ClickType.LONG_PRESS) {
-                        handler.postDelayed(runnable, jitterDelay(50L, 0.5))
-                    }
-                }
-
-                override fun onCancelled(gestureDescription: GestureDescription?) {
-                    activeLongPressRunnables.remove(targetId)
-                }
-            }
-
-            val dispatched = dispatchGesture(gestureDescription, callback, handler)
-            if (!dispatched) {
-                Log.w("TouchService", "Long press $targetId dispatch failed")
-                handler.postDelayed(runnable, 100)
-            }
-        }
-
-        activeLongPressRunnables[targetId] = runnable
-        handler.postDelayed(runnable, 100)
-    }
-
-    private suspend fun performSingleClick(target: ClickTargetInfo): Boolean = suspendCoroutine { continuation ->
+    private suspend fun performSingleClick(target: ClickTargetInfo, executor: GestureExecutor): Boolean {
         val x = jitter(target.x)
         val y = jitter(target.y)
-        Log.d("TouchService", "Clicking target ${target.id} at ($x, $y) interval=${target.interval}")
 
         val path = Path().apply {
             moveTo(x, y)
@@ -203,46 +153,121 @@ class AutoClickService : AccessibilityService() {
             .addStroke(strokeDescription)
             .build()
 
-        val callback = object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                continuation.resume(true)
-            }
+        val success = executor.dispatchGesture(this, gestureDescription)
 
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                Log.w("TouchService", "Single click ${target.id} cancelled")
-                continuation.resume(false)
+        if (!success) {
+            Log.w(TAG, "Single click failed for target ${target.id}, delaying to avoid spam")
+            delay(500)  // Protection against spamming gestures too quickly
+        }
+
+        return success
+    }
+
+    private fun startOrRestartLongPressTask(targetId: String) {
+        // 取消现有的长按任务 Job
+        longPressJobs[targetId]?.cancel()
+        longPressJobs.remove(targetId)
+
+        // 移除 Handler 回调
+        activeLongPressRunnables.remove(targetId)?.let { handler.removeCallbacks(it) }
+
+        val target = clickTargetsById[targetId] ?: return
+        if (target.clickType != ClickType.LONG_PRESS) {
+            return
+        }
+
+        // 为每个目标创建独立的 GestureExecutor
+        val executor = GestureExecutor()
+        gestureExecutors[targetId] = executor
+
+        val job = serviceScope.launch {
+            try {
+                while (isActive && _isClicking.value) {
+                    val currentTarget = clickTargetsById[targetId] ?: break
+                    if (currentTarget.clickType != ClickType.LONG_PRESS) break
+
+                    performLongPress(targetId, currentTarget, executor)
+
+                    if (!isActive || !_isClicking.value) break
+
+                    delay(jitterDelay(50L, 0.5))
+                }
+            } catch (_: CancellationException) {
+                // 预期的取消
+            }
+            longPressJobs.remove(targetId)
+            activeLongPressRunnables.remove(targetId)
+            gestureExecutors.remove(targetId)
+        }
+        longPressJobs[targetId] = job
+    }
+
+    private suspend fun performLongPress(targetId: String, target: ClickTargetInfo, executor: GestureExecutor) {
+        val swipeDistancePx = target.swipeDistance.coerceAtLeast(0)
+
+        val path = Path().apply {
+            val startX = jitter(target.x)
+            val startY = jitter(target.y)
+            moveTo(startX, startY)
+
+            if (swipeDistancePx > 0) {
+                val angleRad = Math.toRadians(target.swipeAngle.toDouble())
+                val dx = (kotlin.math.cos(angleRad) * swipeDistancePx).toInt()
+                val dy = (kotlin.math.sin(angleRad) * swipeDistancePx).toInt()
+                lineTo(jitter(startX + dx, 2), jitter(startY + dy, 2))
             }
         }
 
-        val dispatched = dispatchGesture(gestureDescription, callback, null)
-        if (!dispatched) {
-            Log.w("TouchService", "Single click ${target.id} rejected")
-            continuation.resume(false)
+        val duration = jitterDuration(LONG_PRESS_DURATION, 100L)
+        val strokeDescription = GestureDescription.StrokeDescription(path, 0, duration)
+        val gestureDescription = GestureDescription.Builder()
+            .addStroke(strokeDescription)
+            .build()
+
+        val success = executor.dispatchGesture(this, gestureDescription)
+
+        if (!success) {
+            Log.w(TAG, "Long press failed for target $targetId, delaying to avoid spam")
+            delay(500)  // Protection against spamming gestures too quickly
         }
     }
 
     private fun stopAllTasks() {
-        singleClickJobs.values.forEach { it.cancel() }
+        Log.w("TouchService", "stopAllTasks() called")
+        Log.w("TouchService", "singleClickJobs: ${singleClickJobs.size}, longPressJobs: ${longPressJobs.size}")
+
+        // 取消所有单击任务
+        singleClickJobs.values.forEach { job ->
+            Log.d("TouchService", "Cancelling single click job: isActive=${job.isActive}")
+            job.cancel()
+        }
         singleClickJobs.clear()
 
-        activeLongPressRunnables.values.forEach { handler.removeCallbacks(it) }
-        activeLongPressRunnables.clear()
+        // 取消所有长按任务
+        longPressJobs.values.forEach { job ->
+            Log.d("TouchService", "Cancelling long press job: isActive=${job.isActive}")
+            job.cancel()
+        }
+        longPressJobs.clear()
 
-        // 发送极短空手势以中断当前正在执行的长按手势
-        try {
-            val path = Path().apply { moveTo(0f, 0f) }
-            val stroke = GestureDescription.StrokeDescription(path, 0, 1L)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-            dispatchGesture(gesture, null, null)
-        } catch (_: Exception) {}
+        // 移除所有 Handler 回调
+        activeLongPressRunnables.values.forEach { runnable ->
+            handler.removeCallbacks(runnable)
+        }
+        activeLongPressRunnables.clear()
     }
 
     fun pauseClickTask() {
+        Log.w("TouchService", "=== pauseClickTask() called ===")
+        _isClicking.value = false
+        Log.w("TouchService", "_isClicking.value = false")
+
         stopAllTasks()
-        isClickingInternal.set(false)
+
         FloatingManager.setClickingState(false)
         FloatingManager.setTargetPointTouchable(true)
         FloatingManager.updateControlPanelState(false)
+        Log.w("TouchService", "=== pauseClickTask() completed ===")
     }
 
     fun stopClickTask() {
@@ -270,29 +295,34 @@ class AutoClickService : AccessibilityService() {
             val oldTarget = clickTargetsById[target.id]
             clickTargetsById[target.id] = target
 
-            if (isClickingInternal.get()) {
-                if (oldTarget == null) {
-                    // 新增目标，立即启动
-                    if (target.clickType == ClickType.SINGLE) {
-                        startSingleClickJob(target.id)
-                    } else {
-                        startOrRestartLongPressTask(target.id)
+            if (_isClicking.value) {
+                when {
+                    oldTarget == null -> {
+                        if (target.clickType == ClickType.SINGLE) {
+                            startSingleClickJob(target.id)
+                        } else {
+                            startOrRestartLongPressTask(target.id)
+                        }
                     }
-                } else if (oldTarget.clickType != target.clickType) {
-                    // 类型变化，重启
-                    if (oldTarget.clickType == ClickType.LONG_PRESS) {
+                    oldTarget.clickType != target.clickType -> {
+                        if (oldTarget.clickType == ClickType.LONG_PRESS) {
+                            longPressJobs.remove(target.id)?.cancel()
+                            activeLongPressRunnables.remove(target.id)?.let { handler.removeCallbacks(it) }
+                        } else {
+                            singleClickJobs.remove(target.id)?.cancel()
+                        }
+                        if (target.clickType == ClickType.LONG_PRESS) {
+                            startOrRestartLongPressTask(target.id)
+                        } else {
+                            startSingleClickJob(target.id)
+                        }
+                    }
+                    target.clickType == ClickType.LONG_PRESS &&
+                        (oldTarget.swipeDistance != target.swipeDistance || oldTarget.swipeAngle != target.swipeAngle) -> {
+                        longPressJobs.remove(target.id)?.cancel()
                         activeLongPressRunnables.remove(target.id)?.let { handler.removeCallbacks(it) }
-                    } else {
-                        singleClickJobs.remove(target.id)?.cancel()
-                    }
-                    if (target.clickType == ClickType.LONG_PRESS) {
                         startOrRestartLongPressTask(target.id)
-                    } else {
-                        startSingleClickJob(target.id)
                     }
-                } else if (target.clickType == ClickType.LONG_PRESS &&
-                    (oldTarget.swipeDistance != target.swipeDistance || oldTarget.swipeAngle != target.swipeAngle)) {
-                    startOrRestartLongPressTask(target.id)
                 }
             }
         }
@@ -301,6 +331,7 @@ class AutoClickService : AccessibilityService() {
         removedIds.forEach { id ->
             clickTargetsById.remove(id)
             singleClickJobs.remove(id)?.cancel()
+            longPressJobs.remove(id)?.cancel()
             activeLongPressRunnables.remove(id)?.let { handler.removeCallbacks(it) }
         }
 

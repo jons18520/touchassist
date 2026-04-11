@@ -179,11 +179,16 @@ object FloatingManager {
             }
 
             playPauseButton?.setOnClickListener {
+                Log.d("FloatingManager", "Play/Pause button clicked, isClicking=${service?.isClicking}, isEditMode=$isEditMode")
                 service?.let { service ->
                     if (service.isClicking) {
+                        Log.w("FloatingManager", "Pausing click task")
                         service.pauseClickTask()
                     } else if (!isEditMode) {
+                        Log.w("FloatingManager", "Starting click task")
                         service.startClickTask()
+                    } else {
+                        Log.w("FloatingManager", "Cannot start: edit mode is on")
                     }
                 }
             }
