@@ -18,7 +18,7 @@
 
 ## 冒烟场景
 
-> 结果列填 `PASS` / `FAIL`；FAIL 需附截图 + logcat（`adb logcat | grep -E "TouchService|AutoClickService|FloatingManager|GestureExecutor"`）。
+> 结果列填 `PASS` / `FAIL`；FAIL 需附截图 + logcat（`adb logcat | grep -E "TouchService|FloatingManager|GestureExecutor"`）。
 
 | # | 场景 | 操作步骤 | 预期结果 | 结果 |
 |---|---|---|---|---|

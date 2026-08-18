@@ -165,8 +165,10 @@ base64 -w 0 touchassist.jks.jks
 ## 调试
 
 ```bash
-adb logcat | grep TouchService
+adb logcat | grep -E "TouchService|FloatingManager|GestureExecutor"
 ```
+
+> 说明：`TouchService` 为无障碍服务（AutoClickService）的日志 TAG；`FloatingManager`、`GestureExecutor` 分别为悬浮窗管理与手势执行模块的 TAG。
 
 ---
 

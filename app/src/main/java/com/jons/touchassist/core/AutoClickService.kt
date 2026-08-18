@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Path
+import android.os.Handler
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import kotlinx.coroutines.CancellationException
@@ -22,12 +23,12 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
-class AutoClickService : AccessibilityService() {
+class AutoClickService : AccessibilityService(), GestureDispatcher {
 
     companion object {
         const val ACTION_SHOW_OVERLAYS = "com.jons.touchassist.action.SHOW_OVERLAYS"
         private const val LONG_PRESS_DURATION = 400L
-        private const val TAG = "AutoClickService"
+        private const val TAG = "TouchService"
     }
 
     data class ClickTargetInfo(
@@ -73,10 +74,16 @@ class AutoClickService : AccessibilityService() {
 
     override fun onInterrupt() {
         pauseClickTask()
-        Log.w("TouchService", "Accessibility service interrupted")
+        Log.w(TAG, "Accessibility service interrupted")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+
+    override fun dispatch(
+        gesture: GestureDescription,
+        callback: AccessibilityService.GestureResultCallback,
+        handler: Handler?
+    ): Boolean = dispatchGesture(gesture, callback, handler)
 
     override fun onDestroy() {
         super.onDestroy()
@@ -225,35 +232,35 @@ class AutoClickService : AccessibilityService() {
     }
 
     private fun stopAllTasks() {
-        Log.w("TouchService", "stopAllTasks() called")
-        Log.w("TouchService", "singleClickJobs: ${singleClickJobs.size}, longPressJobs: ${longPressJobs.size}")
+        Log.w(TAG, "stopAllTasks() called")
+        Log.w(TAG, "singleClickJobs: ${singleClickJobs.size}, longPressJobs: ${longPressJobs.size}")
 
         // 取消所有单击任务
         singleClickJobs.values.forEach { job ->
-            Log.d("TouchService", "Cancelling single click job: isActive=${job.isActive}")
+            Log.d(TAG, "Cancelling single click job: isActive=${job.isActive}")
             job.cancel()
         }
         singleClickJobs.clear()
 
         // 取消所有长按任务
         longPressJobs.values.forEach { job ->
-            Log.d("TouchService", "Cancelling long press job: isActive=${job.isActive}")
+            Log.d(TAG, "Cancelling long press job: isActive=${job.isActive}")
             job.cancel()
         }
         longPressJobs.clear()
     }
 
     fun pauseClickTask() {
-        Log.w("TouchService", "=== pauseClickTask() called ===")
+        Log.w(TAG, "=== pauseClickTask() called ===")
         _isClicking.value = false
-        Log.w("TouchService", "_isClicking.value = false")
+        Log.w(TAG, "_isClicking.value = false")
 
         stopAllTasks()
 
         FloatingManager.setClickingState(false)
         FloatingManager.setTargetPointTouchable(true)
         FloatingManager.updateControlPanelState(false)
-        Log.w("TouchService", "=== pauseClickTask() completed ===")
+        Log.w(TAG, "=== pauseClickTask() completed ===")
     }
 
     fun stopClickService() {
@@ -308,7 +315,7 @@ class AutoClickService : AccessibilityService() {
             longPressJobs.remove(id)?.cancel()
         }
 
-        Log.d("TouchService", "Updated ${targets.size} targets")
+        Log.d(TAG, "Updated ${targets.size} targets")
     }
 
     private fun showOverlaysIfRequested() {

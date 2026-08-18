@@ -1,12 +1,10 @@
 package com.jons.touchassist.core
 
-import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.util.Log
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * Gesture execution manager with statistics tracking and error handling.
@@ -31,32 +29,37 @@ class GestureExecutor {
     /**
      * Dispatches a gesture and suspends until completion.
      *
-     * @param service The accessibility service to dispatch from
+     * @param dispatcher The gesture dispatcher to dispatch from
      * @param gesture The gesture description to execute
      * @return true if gesture completed successfully, false if cancelled or error
      */
-    suspend fun dispatchGesture(service: AccessibilityService, gesture: GestureDescription): Boolean {
+    suspend fun dispatchGesture(dispatcher: GestureDispatcher, gesture: GestureDescription): Boolean {
         // Clean up any previous pending continuation to avoid stale events
         if (ongoingContinuation != null) {
             Log.w(TAG, "Previous gesture result is not available yet, clearing to avoid stale events")
             ongoingContinuation = null
         }
 
-        return suspendCoroutine { continuation ->
+        return suspendCancellableCoroutine { continuation ->
             ongoingContinuation = continuation
+            continuation.invokeOnCancellation {
+                ongoingContinuation = null
+            }
 
             try {
-                val dispatched = service.dispatchGesture(gesture, gestureResultCallback, null)
+                val dispatched = dispatcher.dispatch(gesture, gestureResultCallback, null)
                 if (!dispatched) {
                     Log.w(TAG, "Gesture dispatch failed immediately")
                     errorGestures++
-                    // Resume immediately on dispatch failure
+                    // Resume immediately on dispatch failure, clear continuation
                     continuation.resume(false)
+                    ongoingContinuation = null
                 }
             } catch (ex: RuntimeException) {
                 Log.w(TAG, "System exception during gesture dispatch (possibly spamming too fast)", ex)
                 errorGestures++
                 continuation.resume(false)
+                ongoingContinuation = null
             }
         }
     }
