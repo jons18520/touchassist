@@ -24,7 +24,8 @@ object FloatingManager {
     private const val TARGET_VIEW_SIZE_DP = 36
 
     private var windowManager: WindowManager? = null
-    private var service: AutoClickService? = null
+    private var controller: ClickServiceController? = null
+    private var appContext: Context? = null
     private var controlPanelView: View? = null
     private var controlPanelParams: WindowManager.LayoutParams? = null
 
@@ -55,16 +56,17 @@ object FloatingManager {
 
     enum class ClickType { SINGLE, LONG_PRESS }
 
-    fun init(service: AutoClickService) {
-        this.service = service
-        this.windowManager = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        this.sharedPreferences = service.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    fun init(controller: ClickServiceController, context: Context) {
+        this.controller = controller
+        this.appContext = context
+        this.windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        this.sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
     fun showControlPanel() {
         if (controlPanelView != null) return
 
-        val inflater = LayoutInflater.from(service)
+        val inflater = LayoutInflater.from(appContext)
         controlPanelView = inflater.inflate(R.layout.layout_control_panel, null)
 
         controlPanelParams = WindowManager.LayoutParams(
@@ -88,7 +90,7 @@ object FloatingManager {
     private fun createTargetView(target: ClickTarget) {
         if (target.view != null) return
 
-        val inflater = LayoutInflater.from(service)
+        val inflater = LayoutInflater.from(appContext)
         target.view = inflater.inflate(R.layout.layout_target_point, null)
 
         target.params = WindowManager.LayoutParams(
@@ -170,14 +172,14 @@ object FloatingManager {
             }
 
             playPauseButton?.setOnClickListener {
-                Log.d("FloatingManager", "Play/Pause button clicked, isClicking=${service?.isClicking}, isEditMode=$isEditMode")
-                service?.let { service ->
-                    if (service.isClicking) {
+                Log.d("FloatingManager", "Play/Pause button clicked, isClicking=${controller?.isClicking}, isEditMode=$isEditMode")
+                controller?.let { controller ->
+                    if (controller.isClicking) {
                         Log.w("FloatingManager", "Pausing click task")
-                        service.pauseClickTask()
+                        controller.pauseClickTask()
                     } else if (!isEditMode) {
                         Log.w("FloatingManager", "Starting click task")
-                        service.startClickTask()
+                        controller.startClickTask()
                     } else {
                         Log.w("FloatingManager", "Cannot start: edit mode is on")
                     }
@@ -195,9 +197,9 @@ object FloatingManager {
                         controlPanelView!!,
                         controlPanelParams!!,
                         onTouchDown = {
-                            if (service?.isClicking == true) {
+                            if (controller?.isClicking == true) {
                                 Log.w(TAG, "Pausing click task on touch down")
-                                service?.pauseClickTask()
+                                controller?.pauseClickTask()
                                 true
                             } else {
                                 false
@@ -224,12 +226,12 @@ object FloatingManager {
 
     private fun addNewTarget() {
         if (clickTargets.size >= MAX_TARGETS) {
-            Toast.makeText(service, R.string.max_targets_reached, Toast.LENGTH_SHORT).show()
+            Toast.makeText(appContext, R.string.max_targets_reached, Toast.LENGTH_SHORT).show()
             return
         }
 
         // 在屏幕中央附近创建新目标
-        val displayMetrics = service?.resources?.displayMetrics
+        val displayMetrics = appContext?.resources?.displayMetrics
         val screenWidth = displayMetrics?.widthPixels ?: 1080
         val screenHeight = displayMetrics?.heightPixels ?: 1920
 
@@ -266,10 +268,10 @@ object FloatingManager {
         editButton?.let { button ->
             if (isEditMode) {
                 button.setImageResource(R.drawable.ic_check)
-                button.contentDescription = service?.getString(R.string.edit_mode_off)
+                button.contentDescription = appContext?.getString(R.string.edit_mode_off)
             } else {
                 button.setImageResource(R.drawable.ic_edit)
-                button.contentDescription = service?.getString(R.string.edit_mode_on)
+                button.contentDescription = appContext?.getString(R.string.edit_mode_on)
             }
         }
 
@@ -277,7 +279,7 @@ object FloatingManager {
     }
 
     private fun showTargetSettingsDialog(target: ClickTarget) {
-        service?.let { context ->
+        appContext?.let { context ->
             val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_settings, null)
 
             val rgClickType = dialogView.findViewById<RadioGroup>(R.id.rg_click_type)
@@ -417,7 +419,7 @@ object FloatingManager {
 
     private fun updatePlayPauseButtonEnabledState() {
         val hasTargets = clickTargets.isNotEmpty()
-        val isClicking = service?.isClicking == true
+        val isClicking = controller?.isClicking == true
         val canStart = (!isEditMode || isClicking) && hasTargets
         playPauseButton?.isEnabled = canStart
         playPauseButton?.alpha = if (canStart) 1f else 0.5f
@@ -438,12 +440,12 @@ object FloatingManager {
 
 
     private fun showExitConfirmationDialog() {
-        service?.let { context ->
+        appContext?.let { context ->
             val dialog = AlertDialog.Builder(context)
                 .setTitle(R.string.exit_confirm_title)
                 .setMessage(R.string.exit_confirm_message)
                 .setPositiveButton(R.string.exit_confirm_action) { _, _ ->
-                    service?.stopClickService()
+                    controller?.stopClickService()
                 }
                 .setNegativeButton(R.string.cancel, null)
                 .create()
@@ -508,7 +510,7 @@ object FloatingManager {
                 clickX = location[0] + iconView.width / 2f
                 clickY = location[1] + iconView.height / 2f
             } else {
-                val fallbackSize = TARGET_VIEW_SIZE_DP * (service?.resources?.displayMetrics?.density ?: 1f)
+                val fallbackSize = TARGET_VIEW_SIZE_DP * (appContext?.resources?.displayMetrics?.density ?: 1f)
                 clickX = t.x + fallbackSize / 2f
                 clickY = t.y + fallbackSize / 2f
             }
@@ -527,7 +529,7 @@ object FloatingManager {
             )
         }
 
-        service?.updateClickTargets(targetInfos)
+        controller?.updateClickTargets(targetInfos)
 
         targetInfos.forEach { info ->
             Log.d(TAG, "Sync target ${info.id}: (${info.x}, ${info.y}) type=${info.clickType} interval=${info.interval}")
@@ -544,7 +546,7 @@ object FloatingManager {
         viewWidth: Int,
         viewHeight: Int
     ): Pair<Int, Int> {
-        val displayMetrics = service?.resources?.displayMetrics
+        val displayMetrics = appContext?.resources?.displayMetrics
         val screenWidth = displayMetrics?.widthPixels ?: 1080
         val screenHeight = displayMetrics?.heightPixels ?: 1920
 
@@ -758,7 +760,8 @@ object FloatingManager {
     fun removeAllViews() {
         hideAllViews()
         windowManager = null
-        service = null
+        controller = null
+        appContext = null
         sharedPreferences = null
     }
 }

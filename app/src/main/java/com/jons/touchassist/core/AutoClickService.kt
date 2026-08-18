@@ -23,7 +23,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
-class AutoClickService : AccessibilityService(), GestureDispatcher {
+class AutoClickService : AccessibilityService(), GestureDispatcher, ClickServiceController {
 
     companion object {
         const val ACTION_SHOW_OVERLAYS = "com.jons.touchassist.action.SHOW_OVERLAYS"
@@ -57,13 +57,13 @@ class AutoClickService : AccessibilityService(), GestureDispatcher {
     // StateFlow for click state - replaces AtomicBoolean
     private val _isClicking = MutableStateFlow(false)
     val isClickingState: StateFlow<Boolean> = _isClicking.asStateFlow()
-    val isClicking: Boolean
+    override val isClicking: Boolean
         get() = _isClicking.value
     private var shouldShowOverlays = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        FloatingManager.init(this)
+        FloatingManager.init(this, this)
         showOverlaysIfRequested()
     }
 
@@ -96,7 +96,7 @@ class AutoClickService : AccessibilityService(), GestureDispatcher {
     }
 
     @Synchronized
-    fun startClickTask() {
+    override fun startClickTask() {
         if (_isClicking.value) {
             return
         }
@@ -253,7 +253,7 @@ class AutoClickService : AccessibilityService(), GestureDispatcher {
         longPressJobs.clear()
     }
 
-    fun pauseClickTask() {
+    override fun pauseClickTask() {
         Log.w(TAG, "=== pauseClickTask() called ===")
         _isClicking.value = false
         Log.w(TAG, "_isClicking.value = false")
@@ -266,14 +266,14 @@ class AutoClickService : AccessibilityService(), GestureDispatcher {
         Log.w(TAG, "=== pauseClickTask() completed ===")
     }
 
-    fun stopClickService() {
+    override fun stopClickService() {
         pauseClickTask()
         shouldShowOverlays = false
         FloatingManager.hideAllViews()
         stopSelf()
     }
 
-    fun updateClickTargets(targets: List<ClickTargetInfo>) {
+    override fun updateClickTargets(targets: List<ClickTargetInfo>) {
         val diff = scheduler.computeDiff(clickTargetsById.toMap(), targets, _isClicking.value)
 
         // 1. 更新目标表
