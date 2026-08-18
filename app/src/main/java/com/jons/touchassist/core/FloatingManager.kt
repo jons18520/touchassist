@@ -16,9 +16,6 @@ object FloatingManager {
 
     private const val TAG = "FloatingManager"
     private const val PREFS_NAME = "touch_assist_settings"
-    private const val KEY_CLICK_INTERVAL = "click_interval"
-    private const val KEY_TARGET_X = "target_x"
-    private const val KEY_TARGET_Y = "target_y"
     private const val KEY_TARGETS = "click_targets"
 
     private const val MAX_TARGETS = 5
@@ -86,12 +83,6 @@ object FloatingManager {
 
         setupControlPanelButtons()
         setupDraggableView(controlPanelView!!, controlPanelParams!!)
-    }
-
-    fun showTargetPoint() {
-        if (clickTargets.isEmpty()) {
-            return
-        }
     }
 
     private fun createTargetView(target: ClickTarget) {
@@ -449,8 +440,6 @@ object FloatingManager {
 
     fun restorePersistedSettings() {
         val prefs = sharedPreferences ?: return
-        val interval = prefs.getLong(KEY_CLICK_INTERVAL, 1000L)
-        service?.updateSettings(interval)
 
         val targetsJson = prefs.getString(KEY_TARGETS, null) ?: return
         try {
@@ -472,14 +461,6 @@ object FloatingManager {
             syncTargetsToService()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to restore targets: ${e.message}")
-        }
-    }
-
-    private fun persistTargetPointPosition(target: ClickTarget) {
-        sharedPreferences?.edit()?.apply {
-            putInt(KEY_TARGET_X, target.x.toInt())
-            putInt(KEY_TARGET_Y, target.y.toInt())
-            apply()
         }
     }
 

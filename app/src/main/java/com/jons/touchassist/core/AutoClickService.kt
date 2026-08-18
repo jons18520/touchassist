@@ -4,8 +4,6 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Path
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import kotlinx.coroutines.CancellationException
@@ -48,8 +46,6 @@ class AutoClickService : AccessibilityService() {
     private val clickTargetsById = ConcurrentHashMap<String, ClickTargetInfo>()
     private val singleClickJobs = ConcurrentHashMap<String, Job>()
     private val longPressJobs = ConcurrentHashMap<String, Job>()
-    private val handler = Handler(Looper.getMainLooper())
-    private val activeLongPressRunnables = ConcurrentHashMap<String, Runnable>()
 
     // 每个目标独立的 GestureExecutor，避免并发冲突
     private val gestureExecutors = ConcurrentHashMap<String, GestureExecutor>()
@@ -168,9 +164,6 @@ class AutoClickService : AccessibilityService() {
         longPressJobs[targetId]?.cancel()
         longPressJobs.remove(targetId)
 
-        // 移除 Handler 回调
-        activeLongPressRunnables.remove(targetId)?.let { handler.removeCallbacks(it) }
-
         val target = clickTargetsById[targetId] ?: return
         if (target.clickType != ClickType.LONG_PRESS) {
             return
@@ -196,7 +189,6 @@ class AutoClickService : AccessibilityService() {
                 // 预期的取消
             }
             longPressJobs.remove(targetId)
-            activeLongPressRunnables.remove(targetId)
             gestureExecutors.remove(targetId)
         }
         longPressJobs[targetId] = job
@@ -249,12 +241,6 @@ class AutoClickService : AccessibilityService() {
             job.cancel()
         }
         longPressJobs.clear()
-
-        // 移除所有 Handler 回调
-        activeLongPressRunnables.values.forEach { runnable ->
-            handler.removeCallbacks(runnable)
-        }
-        activeLongPressRunnables.clear()
     }
 
     fun pauseClickTask() {
@@ -270,21 +256,11 @@ class AutoClickService : AccessibilityService() {
         Log.w("TouchService", "=== pauseClickTask() completed ===")
     }
 
-    fun stopClickTask() {
-        pauseClickTask()
-    }
-
     fun stopClickService() {
         pauseClickTask()
         shouldShowOverlays = false
         FloatingManager.hideAllViews()
         stopSelf()
-    }
-
-    fun updateSettings(interval: Long) {
-        clickTargetsById.entries.forEach { (id, target) ->
-            clickTargetsById[id] = target.copy(interval = interval)
-        }
     }
 
     fun updateClickTargets(targets: List<ClickTargetInfo>) {
@@ -307,7 +283,6 @@ class AutoClickService : AccessibilityService() {
                     oldTarget.clickType != target.clickType -> {
                         if (oldTarget.clickType == ClickType.LONG_PRESS) {
                             longPressJobs.remove(target.id)?.cancel()
-                            activeLongPressRunnables.remove(target.id)?.let { handler.removeCallbacks(it) }
                         } else {
                             singleClickJobs.remove(target.id)?.cancel()
                         }
@@ -320,7 +295,6 @@ class AutoClickService : AccessibilityService() {
                     target.clickType == ClickType.LONG_PRESS &&
                         (oldTarget.swipeDistance != target.swipeDistance || oldTarget.swipeAngle != target.swipeAngle) -> {
                         longPressJobs.remove(target.id)?.cancel()
-                        activeLongPressRunnables.remove(target.id)?.let { handler.removeCallbacks(it) }
                         startOrRestartLongPressTask(target.id)
                     }
                 }
@@ -332,16 +306,9 @@ class AutoClickService : AccessibilityService() {
             clickTargetsById.remove(id)
             singleClickJobs.remove(id)?.cancel()
             longPressJobs.remove(id)?.cancel()
-            activeLongPressRunnables.remove(id)?.let { handler.removeCallbacks(it) }
         }
 
         Log.d("TouchService", "Updated ${targets.size} targets")
-    }
-
-    fun updateTargetPosition(x: Float, y: Float) {
-        val firstId = clickTargetsById.keys.firstOrNull() ?: return
-        val target = clickTargetsById[firstId] ?: return
-        clickTargetsById[firstId] = target.copy(x = x, y = y)
     }
 
     private fun showOverlaysIfRequested() {
