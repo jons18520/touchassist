@@ -189,7 +189,22 @@ object FloatingManager {
             }
 
             if (controlPanelView != null && controlPanelParams != null) {
-                playPauseButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
+                playPauseButton?.let {
+                    setupControlPanelButtonDrag(
+                        it,
+                        controlPanelView!!,
+                        controlPanelParams!!,
+                        onTouchDown = {
+                            if (service?.isClicking == true) {
+                                Log.w(TAG, "Pausing click task on touch down")
+                                service?.pauseClickTask()
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    )
+                }
                 addButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 removeButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 editButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
@@ -542,18 +557,21 @@ object FloatingManager {
     private fun setupControlPanelButtonDrag(
         button: View,
         panelView: View,
-        panelParams: WindowManager.LayoutParams
+        panelParams: WindowManager.LayoutParams,
+        onTouchDown: (() -> Boolean)? = null
     ) {
         var initialX = 0
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
         var isDragging = false
+        var suppressClick = false
         val dragThreshold = 12f
 
         button.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    suppressClick = onTouchDown?.invoke() ?: false
                     initialX = panelParams.x
                     initialY = panelParams.y
                     initialTouchX = event.rawX
@@ -590,7 +608,9 @@ object FloatingManager {
                         v.cancelLongPress()
                         true
                     } else {
-                        false
+                        val suppress = suppressClick
+                        suppressClick = false
+                        suppress
                     }
                 }
                 else -> false
