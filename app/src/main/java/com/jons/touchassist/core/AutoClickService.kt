@@ -51,6 +51,9 @@ class AutoClickService : AccessibilityService(), GestureDispatcher {
     // 每个目标独立的 GestureExecutor，避免并发冲突
     private val gestureExecutors = ConcurrentHashMap<String, GestureExecutor>()
 
+    // 目标调度状态机（纯 Kotlin，可单测）
+    private val scheduler = TargetScheduler()
+
     // StateFlow for click state - replaces AtomicBoolean
     private val _isClicking = MutableStateFlow(false)
     val isClickingState: StateFlow<Boolean> = _isClicking.asStateFlow()
@@ -80,10 +83,10 @@ class AutoClickService : AccessibilityService(), GestureDispatcher {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun dispatch(
-        gesture: GestureDescription,
+        gesture: GestureDescription?,
         callback: AccessibilityService.GestureResultCallback,
         handler: Handler?
-    ): Boolean = dispatchGesture(gesture, callback, handler)
+    ): Boolean = dispatchGesture(requireNotNull(gesture), callback, handler)
 
     override fun onDestroy() {
         super.onDestroy()
@@ -271,48 +274,29 @@ class AutoClickService : AccessibilityService(), GestureDispatcher {
     }
 
     fun updateClickTargets(targets: List<ClickTargetInfo>) {
-        val newIds = targets.map { it.id }.toSet()
-        val oldIds = clickTargetsById.keys.toSet()
+        val diff = scheduler.computeDiff(clickTargetsById.toMap(), targets, _isClicking.value)
 
-        targets.forEach { target ->
-            val oldTarget = clickTargetsById[target.id]
-            clickTargetsById[target.id] = target
+        // 1. 更新目标表
+        targets.forEach { clickTargetsById[it.id] = it }
 
-            if (_isClicking.value) {
-                when {
-                    oldTarget == null -> {
-                        if (target.clickType == ClickType.SINGLE) {
-                            startSingleClickJob(target.id)
-                        } else {
-                            startOrRestartLongPressTask(target.id)
-                        }
-                    }
-                    oldTarget.clickType != target.clickType -> {
-                        if (oldTarget.clickType == ClickType.LONG_PRESS) {
-                            longPressJobs.remove(target.id)?.cancel()
-                        } else {
-                            singleClickJobs.remove(target.id)?.cancel()
-                        }
-                        if (target.clickType == ClickType.LONG_PRESS) {
-                            startOrRestartLongPressTask(target.id)
-                        } else {
-                            startSingleClickJob(target.id)
-                        }
-                    }
-                    target.clickType == ClickType.LONG_PRESS &&
-                        (oldTarget.swipeDistance != target.swipeDistance || oldTarget.swipeAngle != target.swipeAngle) -> {
-                        longPressJobs.remove(target.id)?.cancel()
-                        startOrRestartLongPressTask(target.id)
-                    }
-                }
-            }
-        }
-
-        val removedIds = oldIds - newIds
-        removedIds.forEach { id ->
+        // 2. 移除已删除目标
+        diff.removedIds.forEach { id ->
             clickTargetsById.remove(id)
             singleClickJobs.remove(id)?.cancel()
             longPressJobs.remove(id)?.cancel()
+        }
+
+        // 3. 取消需要停掉的旧任务
+        diff.singleJobIdsToCancel.forEach { singleClickJobs.remove(it)?.cancel() }
+        diff.longPressJobIdsToCancel.forEach { longPressJobs.remove(it)?.cancel() }
+
+        // 4. 启动/重启目标
+        diff.targetsToStart.forEach { target ->
+            if (target.clickType == ClickType.SINGLE) {
+                startSingleClickJob(target.id)
+            } else {
+                startOrRestartLongPressTask(target.id)
+            }
         }
 
         Log.d(TAG, "Updated ${targets.size} targets")

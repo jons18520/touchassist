@@ -33,7 +33,7 @@ class GestureExecutor {
      * @param gesture The gesture description to execute
      * @return true if gesture completed successfully, false if cancelled or error
      */
-    suspend fun dispatchGesture(dispatcher: GestureDispatcher, gesture: GestureDescription): Boolean {
+    suspend fun dispatchGesture(dispatcher: GestureDispatcher, gesture: GestureDescription?): Boolean {
         // Clean up any previous pending continuation to avoid stale events
         if (ongoingContinuation != null) {
             Log.w(TAG, "Previous gesture result is not available yet, clearing to avoid stale events")
