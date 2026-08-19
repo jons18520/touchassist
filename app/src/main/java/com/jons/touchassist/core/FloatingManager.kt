@@ -361,7 +361,7 @@ object FloatingManager {
                     }
 
                     var interval = etInterval.text.toString().toLongOrNull() ?: 100L
-                    interval = interval.coerceIn(50L, 1000L)
+                    interval = interval.coerceIn(1L, 1000L)
 
                     var swipeDistance = etSwipeDistance.text.toString().toIntOrNull() ?: 0
                     swipeDistance = swipeDistance.coerceAtLeast(0)
