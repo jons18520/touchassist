@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
@@ -53,6 +55,10 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
 
     // 目标调度状态机（纯 Kotlin，可单测）
     private val scheduler = TargetScheduler()
+
+    // 手势派发互斥锁：Android 同一时刻只允许一个手势在飞，多目标并发派发会互相取消（活锁）。
+    // 串行化后各目标排队派发；锁在手势派发期间持有，回调返回后释放。
+    private val gestureMutex = Mutex()
 
     // StateFlow for click state - replaces AtomicBoolean
     private val _isClicking = MutableStateFlow(false)
@@ -159,7 +165,9 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
             .addStroke(strokeDescription)
             .build()
 
-        val success = executor.dispatchGesture(this, gestureDescription)
+        val success = gestureMutex.withLock {
+            executor.dispatchGesture(this, gestureDescription)
+        }
 
         if (!success) {
             Log.w(TAG, "Single click failed for target ${target.id}, delaying to avoid spam")
@@ -226,7 +234,9 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
             .addStroke(strokeDescription)
             .build()
 
-        val success = executor.dispatchGesture(this, gestureDescription)
+        val success = gestureMutex.withLock {
+            executor.dispatchGesture(this, gestureDescription)
+        }
 
         if (!success) {
             Log.w(TAG, "Long press failed for target $targetId, delaying to avoid spam")
