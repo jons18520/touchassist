@@ -276,6 +276,10 @@ object FloatingManager {
         }
 
         updatePlayPauseButtonEnabledState()
+
+        // 同步目标点触摸性：编辑模式且未点击时可拖拽定位，其余情况不拦截触摸，
+        // 确保暂停/非编辑状态下人工可以正常点击到下层应用。
+        setTargetPointTouchable(isEditMode)
     }
 
     private fun showTargetSettingsDialog(target: ClickTarget) {

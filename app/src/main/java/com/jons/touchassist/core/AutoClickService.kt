@@ -271,7 +271,9 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
         stopAllTasks()
 
         FloatingManager.setClickingState(false)
-        FloatingManager.setTargetPointTouchable(true)
+        // 仅编辑模式下可触摸（便于拖拽定位）；非编辑模式下保持不可触摸，
+        // 避免遮挡目标位置，让人工可以正常点击到下层应用。
+        FloatingManager.setTargetPointTouchable(FloatingManager.isEditMode())
         FloatingManager.updateControlPanelState(false)
         Log.w(TAG, "=== pauseClickTask() completed ===")
     }
