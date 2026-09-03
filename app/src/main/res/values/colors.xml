@@ -29,4 +29,8 @@
     <color name="target_middle_pressed_fill">#4DFF4D73</color>
     <color name="target_middle_stroke">#CCFF4D73</color>
     <color name="target_ripple">#33FF4D73</color>
+
+    <!-- 触控类型角标：绿色=单次触控，橙色=持续触控 -->
+    <color name="target_type_single">#FF34A853</color>
+    <color name="target_type_long_press">#FFFF9800</color>
 </resources>

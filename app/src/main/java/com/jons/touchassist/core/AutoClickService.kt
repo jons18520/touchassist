@@ -33,6 +33,10 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
         private const val TAG = "TouchService"
     }
 
+    /**
+     * 单个触控目标的服务端数据。clickType 按目标独立设置（编辑模式下点按目标点切换）；
+     * interval/swipeDistance/swipeAngle 来自全局设置（FloatingManager 统一配置）。
+     */
     data class ClickTargetInfo(
         val id: String,
         val x: Float,
@@ -67,8 +71,12 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
         get() = _isClicking.value
     private var shouldShowOverlays = false
 
+    // 系统异步连接：onServiceConnected 可能晚于 onStartCommand 回调，此时 FloatingManager 尚未 init
+    private var serviceConnected = false
+
     override fun onServiceConnected() {
         super.onServiceConnected()
+        serviceConnected = true
         FloatingManager.init(this, this)
         showOverlaysIfRequested()
     }
@@ -76,7 +84,11 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_SHOW_OVERLAYS) {
             shouldShowOverlays = true
-            showOverlaysIfRequested()
+            // 连接完成前仅记录意图，避免在 FloatingManager.init 之前触碰 UI；
+            // onServiceConnected 里会再次调用 showOverlaysIfRequested 完成显示
+            if (serviceConnected) {
+                showOverlaysIfRequested()
+            }
         }
         return super.onStartCommand(intent, flags, startId)
     }
@@ -96,6 +108,7 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceConnected = false
         serviceScope.cancel()
         stopAllTasks()
         FloatingManager.removeAllViews()

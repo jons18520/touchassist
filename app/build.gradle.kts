@@ -46,6 +46,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1")
     
     testImplementation("junit:junit:4.13.2")
+    // JVM 单测中使用真实的 org.json（android.jar 里的 JSONObject 是 stub）
+    testImplementation("org.json:json:20231013")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }

@@ -1,41 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:clipChildren="false"
-    android:clipToPadding="false">
+    android:layout_height="wrap_content">
 
-    <!-- 十字准星图标（左下偏移，为右上角按钮留空间） -->
+    <!-- 十字准星图标（触控类型为每个目标自己的属性：编辑模式下点按目标切换） -->
     <ImageView
         android:id="@+id/iv_target_icon"
         android:layout_width="36dp"
         android:layout_height="36dp"
-        android:layout_gravity="bottom|start"
-        android:layout_marginTop="12dp"
-        android:layout_marginEnd="12dp"
         android:src="@drawable/ic_crosshair"
         android:contentDescription="目标点"
         android:scaleType="fitXY" />
 
-    <!-- 编辑模式下的操作按钮容器 -->
-    <FrameLayout
-        android:id="@+id/fl_action_buttons"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:visibility="gone">
+    <!-- 触控类型角标：绿色=单次触控，橙色=持续触控；仅编辑模式显示 -->
+    <View
+        android:id="@+id/v_target_type_badge"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
+        android:layout_gravity="bottom|end"
+        android:background="@drawable/bg_type_badge"
+        android:visibility="gone" />
 
-        <!-- 右上角外部：设置按钮 -->
-        <ImageButton
-            android:id="@+id/btn_target_settings"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:layout_gravity="top|end"
-            android:background="@drawable/bg_floating_button"
-            android:src="@drawable/ic_settings"
-            android:contentDescription="@string/target_settings"
-            android:padding="3dp"
-            android:scaleType="centerInside"
-            android:tint="@color/floating_icon_tint" />
-
-    </FrameLayout>
 </FrameLayout>

@@ -27,18 +27,17 @@
     <string name="control_add">新增目标</string>
     <string name="control_remove">删除目标</string>
     <string name="control_edit">编辑模式</string>
+    <string name="control_settings">设置</string>
+    <string name="control_profiles">配置方案</string>
     <string name="control_stop_clicking">停止</string>
     <string name="control_exit_app">退出应用</string>
     <string name="edit_mode_on">编辑中</string>
     <string name="edit_mode_off">编辑完成</string>
 
-    <!-- 点击目标操作 -->
-    <string name="target_settings">设置</string>
-    <string name="target_delete">删除</string>
-
-    <!-- 点击目标设置对话框 -->
-    <string name="target_settings_title">触控目标设置</string>
-    <string name="click_type">触控模式</string>
+    <!-- 全局触控设置对话框 -->
+    <string name="target_settings_title">触控设置（全局）</string>
+    <string name="target_type_hint">提示：触控类型按目标独立设置——编辑模式下点按目标点，可在单次触控 / 持续触控间切换（绿角标=单次，橙角标=持续）</string>
+    <string name="target_type_switched">该目标已切换为%1$s</string>
     <string name="click_type_single">单次触控</string>
     <string name="click_type_long_press">持续触控</string>
     <string name="click_interval_label">间隔时间 (毫秒)</string>
@@ -53,6 +52,23 @@
     <string name="exit_confirm_title">确认退出</string>
     <string name="exit_confirm_message">退出后将停止服务并关闭悬浮窗，是否继续？</string>
     <string name="exit_confirm_action">退出</string>
+
+    <!-- 配置方案 -->
+    <string name="delete">删除</string>
+    <string name="profile_list_title">配置方案</string>
+    <string name="profile_save_current">保存当前为方案</string>
+    <string name="profile_new_title">新建方案</string>
+    <string name="profile_name_hint">方案名称</string>
+    <string name="profile_default_name">方案 %1$d</string>
+    <string name="profile_name_required">请输入方案名称</string>
+    <string name="profile_no_targets">请先添加触控目标再保存方案</string>
+    <string name="profile_empty_hint">暂无方案\n点击「保存当前为方案」创建第一个方案</string>
+    <string name="profile_active_suffix">（当前）</string>
+    <string name="profile_applied">已切换到「%1$s」</string>
+    <string name="profile_saved">方案「%1$s」已保存</string>
+    <string name="profile_deleted">方案已删除</string>
+    <string name="profile_delete_title">删除方案</string>
+    <string name="profile_delete_message">删除方案「%1$s」？该操作不可恢复。</string>
 
     <!-- 通知 -->
     <string name="service_running">触控助手服务正在运行</string>

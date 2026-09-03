@@ -3,6 +3,7 @@ package com.jons.touchassist.core
 import android.app.AlertDialog
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import android.graphics.PixelFormat
 import android.util.Log
 import android.view.*
@@ -17,6 +18,9 @@ object FloatingManager {
     private const val TAG = "FloatingManager"
     private const val PREFS_NAME = "touch_assist_settings"
     private const val KEY_TARGETS = "click_targets"
+    private const val KEY_GLOBAL_SETTINGS = "global_settings"
+    private const val KEY_PROFILES = "profiles"
+    private const val KEY_ACTIVE_PROFILE_ID = "active_profile_id"
 
     private const val MAX_TARGETS = 5
 
@@ -32,29 +36,34 @@ object FloatingManager {
     private var playPauseButton: ImageButton? = null
     private var addButton: ImageButton? = null
     private var editButton: ImageButton? = null
+    private var settingsButton: ImageButton? = null
+    private var profilesButton: ImageButton? = null
     private var sharedPreferences: SharedPreferences? = null
 
     // 多点击目标管理
     private val clickTargets = mutableListOf<ClickTarget>()
     private var isEditMode = false
 
-    // 当前正在设置的目标 ID
-    private var currentSettingTargetId: String? = null
+    // 配置方案列表（全局设置 + 触控目标数量/位置快照）
+    private val profiles = mutableListOf<ConfigProfile>()
 
     data class ClickTarget(
         val id: String,
         var x: Float,
         var y: Float,
-        var clickType: ClickType = ClickType.SINGLE,
-        var interval: Long = 100L,
-        var swipeDistance: Int = 0,
-        var swipeAngle: Int = 270,
+        // 触控类型按目标独立设置：编辑模式下点按目标点切换
+        var clickType: AutoClickService.ClickType = AutoClickService.ClickType.SINGLE,
         var view: View? = null,
-        var params: WindowManager.LayoutParams? = null,
-        var settingsButton: ImageButton? = null
+        var params: WindowManager.LayoutParams? = null
     )
 
-    enum class ClickType { SINGLE, LONG_PRESS }
+    private var globalSettings = GlobalSettings()
+
+    // 当前生效的方案 id；目标/设置被手动改动后置空，仅作为方案列表的提示标记
+    private var activeProfileId: String? = null
+
+    // 防止重复调用 restorePersistedSettings 时重复注入目标窗口
+    private var hasRestoredSettings = false
 
     fun init(controller: ClickServiceController, context: Context) {
         this.controller = controller
@@ -64,7 +73,8 @@ object FloatingManager {
     }
 
     fun showControlPanel() {
-        if (controlPanelView != null) return
+        // appContext 为空说明 init 尚未执行（onServiceConnected 未回调），此时不能创建窗口
+        if (controlPanelView != null || appContext == null) return
 
         val inflater = LayoutInflater.from(appContext)
         controlPanelView = inflater.inflate(R.layout.layout_control_panel, null)
@@ -107,33 +117,63 @@ object FloatingManager {
 
         windowManager?.addView(target.view, target.params)
 
-        // 获取设置按钮引用
-        target.settingsButton = target.view?.findViewById(R.id.btn_target_settings)
-
-        // 设置按钮事件
-        target.settingsButton?.setOnClickListener {
-            isEditMode = true
-            updateTargetActionButtonsVisibility(target)
-            showTargetSettingsDialog(target)
-        }
-
         // 更新按钮可见性 - 只在编辑模式显示
-        updateTargetActionButtonsVisibility(target)
+        updateTargetVisualState(target)
+
+        // 编辑模式下点按（非拖动）目标点：切换单次/持续触控类型
+        target.view?.setOnClickListener { toggleTargetType(target) }
 
         setupDraggableView(target.view!!, target.params!!, true, target)
     }
 
-    private fun updateTargetActionButtonsVisibility(target: ClickTarget) {
-        val actionContainer = target.view?.findViewById<FrameLayout>(R.id.fl_action_buttons)
+    private fun updateTargetVisualState(target: ClickTarget) {
+        val context = appContext
         val iconView = target.view?.findViewById<ImageView>(R.id.iv_target_icon)
-        if (isEditMode) {
-            target.view?.visibility = View.VISIBLE
-            actionContainer?.visibility = View.VISIBLE
-            iconView?.visibility = View.VISIBLE
-        } else {
-            actionContainer?.visibility = View.GONE
-            iconView?.visibility = View.INVISIBLE
+        iconView?.visibility = if (isEditMode) View.VISIBLE else View.INVISIBLE
+        val badge = target.view?.findViewById<View>(R.id.v_target_type_badge)
+        badge?.visibility = if (isEditMode) View.VISIBLE else View.GONE
+        if (isEditMode && context != null) {
+            val colorRes = if (target.clickType == AutoClickService.ClickType.SINGLE) {
+                R.color.target_type_single
+            } else {
+                R.color.target_type_long_press
+            }
+            badge?.backgroundTintList = ColorStateList.valueOf(context.getColor(colorRes))
+            badge?.contentDescription = context.getString(
+                if (target.clickType == AutoClickService.ClickType.SINGLE) {
+                    R.string.click_type_single
+                } else {
+                    R.string.click_type_long_press
+                }
+            )
         }
+    }
+
+    private fun toggleTargetType(target: ClickTarget) {
+        val context = appContext ?: return
+        if (!isEditMode || controller?.isClicking == true) return
+
+        target.clickType = if (target.clickType == AutoClickService.ClickType.SINGLE) {
+            AutoClickService.ClickType.LONG_PRESS
+        } else {
+            AutoClickService.ClickType.SINGLE
+        }
+        updateTargetVisualState(target)
+
+        // 手动改动后不再对应任何已保存方案
+        clearActiveProfileMark()
+        persistAllTargets()
+        syncTargetsToService()
+
+        val typeName = context.getString(
+            if (target.clickType == AutoClickService.ClickType.SINGLE) {
+                R.string.click_type_single
+            } else {
+                R.string.click_type_long_press
+            }
+        )
+        Toast.makeText(context, context.getString(R.string.target_type_switched, typeName), Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "Target ${target.id} switched to ${target.clickType}")
     }
 
     private fun deleteTarget(target: ClickTarget) {
@@ -144,7 +184,9 @@ object FloatingManager {
         }
         target.view = null
         target.params = null
-        target.settingsButton = null
+
+        // 手动改动后不再对应任何已保存方案
+        clearActiveProfileMark()
 
         // 更新服务中的目标列表
         syncTargetsToService()
@@ -156,6 +198,8 @@ object FloatingManager {
             playPauseButton = view.findViewById(R.id.btn_play_pause)
             addButton = view.findViewById(R.id.btn_add)
             editButton = view.findViewById(R.id.btn_edit)
+            settingsButton = view.findViewById(R.id.btn_settings)
+            profilesButton = view.findViewById(R.id.btn_profiles)
             val removeButton = view.findViewById<ImageButton>(R.id.btn_remove)
             val exitButton = view.findViewById<ImageButton>(R.id.btn_exit)
 
@@ -169,6 +213,14 @@ object FloatingManager {
 
             editButton?.setOnClickListener {
                 toggleEditMode()
+            }
+
+            settingsButton?.setOnClickListener {
+                showGlobalSettingsDialog()
+            }
+
+            profilesButton?.setOnClickListener {
+                showProfileListDialog()
             }
 
             playPauseButton?.setOnClickListener {
@@ -210,6 +262,8 @@ object FloatingManager {
                 addButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 removeButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 editButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
+                settingsButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
+                profilesButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
                 exitButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
             }
 
@@ -244,6 +298,9 @@ object FloatingManager {
         clickTargets.add(newTarget)
         createTargetView(newTarget)
 
+        // 手动改动后不再对应任何已保存方案
+        clearActiveProfileMark()
+
         // 更新服务中的目标列表
         syncTargetsToService()
         persistAllTargets()
@@ -259,9 +316,9 @@ object FloatingManager {
     private fun toggleEditMode() {
         isEditMode = !isEditMode
 
-        // 更新所有目标的按钮可见性
+        // 更新所有目标的类型角标与图标可见性
         clickTargets.forEach { target ->
-            updateTargetActionButtonsVisibility(target)
+            updateTargetVisualState(target)
         }
 
         // 更新编辑按钮图标和状态
@@ -282,45 +339,20 @@ object FloatingManager {
         setTargetPointTouchable(isEditMode)
     }
 
-    private fun showTargetSettingsDialog(target: ClickTarget) {
+    private fun showGlobalSettingsDialog() {
         appContext?.let { context ->
             val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_settings, null)
 
-            val rgClickType = dialogView.findViewById<RadioGroup>(R.id.rg_click_type)
-            val tvIntervalLabel = dialogView.findViewById<TextView>(R.id.tv_interval_label)
             val etInterval = dialogView.findViewById<EditText>(R.id.et_interval)
-            val tvSwipeDistanceLabel = dialogView.findViewById<TextView>(R.id.tv_swipe_distance_label)
             val etSwipeDistance = dialogView.findViewById<EditText>(R.id.et_swipe_distance)
-            val tvSwipeDirectionLabel = dialogView.findViewById<TextView>(R.id.tv_swipe_direction_label)
             val rgSwipeDirection = dialogView.findViewById<RadioGroup>(R.id.rg_swipe_direction)
 
-            // 加载当前目标设置
-            when (target.clickType) {
-                ClickType.SINGLE -> {
-                    rgClickType.check(R.id.rb_click_type_single)
-                    tvIntervalLabel.visibility = View.VISIBLE
-                    etInterval.visibility = View.VISIBLE
-                    tvSwipeDistanceLabel.visibility = View.GONE
-                    etSwipeDistance.visibility = View.GONE
-                    tvSwipeDirectionLabel.visibility = View.GONE
-                    rgSwipeDirection.visibility = View.GONE
-                }
-                ClickType.LONG_PRESS -> {
-                    rgClickType.check(R.id.rb_click_type_long_press)
-                    tvIntervalLabel.visibility = View.GONE
-                    etInterval.visibility = View.GONE
-                    tvSwipeDistanceLabel.visibility = View.VISIBLE
-                    etSwipeDistance.visibility = View.VISIBLE
-                    tvSwipeDirectionLabel.visibility = View.VISIBLE
-                    rgSwipeDirection.visibility = View.VISIBLE
-                }
-            }
-
-            etInterval.setText(target.interval.toString())
-            etSwipeDistance.setText(target.swipeDistance.toString())
+            // 加载当前全局参数（触控类型不属于全局设置，按目标独立设置）
+            etInterval.setText(globalSettings.interval.toString())
+            etSwipeDistance.setText(globalSettings.swipeDistance.toString())
 
             // 加载当前方向
-            when (target.swipeAngle) {
+            when (globalSettings.swipeAngle) {
                 270 -> rgSwipeDirection.check(R.id.rb_dir_up)
                 90  -> rgSwipeDirection.check(R.id.rb_dir_down)
                 180 -> rgSwipeDirection.check(R.id.rb_dir_left)
@@ -328,38 +360,10 @@ object FloatingManager {
                 else -> rgSwipeDirection.check(R.id.rb_dir_up)
             }
 
-            // 设置 RadioGroup 监听器
-            rgClickType.setOnCheckedChangeListener { _, checkedId ->
-                when (checkedId) {
-                    R.id.rb_click_type_single -> {
-                        tvIntervalLabel.visibility = View.VISIBLE
-                        etInterval.visibility = View.VISIBLE
-                        tvSwipeDistanceLabel.visibility = View.GONE
-                        etSwipeDistance.visibility = View.GONE
-                        tvSwipeDirectionLabel.visibility = View.GONE
-                        rgSwipeDirection.visibility = View.GONE
-                    }
-                    R.id.rb_click_type_long_press -> {
-                        tvIntervalLabel.visibility = View.GONE
-                        etInterval.visibility = View.GONE
-                        tvSwipeDistanceLabel.visibility = View.VISIBLE
-                        etSwipeDistance.visibility = View.VISIBLE
-                        tvSwipeDirectionLabel.visibility = View.VISIBLE
-                        rgSwipeDirection.visibility = View.VISIBLE
-                    }
-                }
-            }
-
             val dialog = AlertDialog.Builder(context)
                 .setTitle(R.string.target_settings_title)
                 .setView(dialogView)
                 .setPositiveButton(R.string.save) { _, _ ->
-                    val clickType = if (rgClickType.checkedRadioButtonId == R.id.rb_click_type_single) {
-                        ClickType.SINGLE
-                    } else {
-                        ClickType.LONG_PRESS
-                    }
-
                     var interval = etInterval.text.toString().toLongOrNull() ?: 100L
                     interval = interval.coerceIn(1L, 1000L)
 
@@ -374,19 +378,19 @@ object FloatingManager {
                         else              -> 270
                     }
 
-                    target.clickType = clickType
-                    target.interval = interval
-                    target.swipeDistance = swipeDistance
-                    target.swipeAngle = swipeAngle
+                    globalSettings = GlobalSettings(
+                        interval = interval,
+                        swipeDistance = swipeDistance,
+                        swipeAngle = swipeAngle
+                    )
 
-                    isEditMode = true
-                    updateTargetActionButtonsVisibility(target)
-
-                    // 更新服务中的目标
+                    // 手动改动后不再对应任何已保存方案
+                    clearActiveProfileMark()
+                    // 先持久化再同步：进程在中途被杀时设置已落盘，下次启动 startClickTask 会重新同步
+                    persistGlobalSettings()
                     syncTargetsToService()
-                    persistAllTargets()
 
-                    Log.d(TAG, "Updated target ${target.id}: type=$clickType, interval=$interval, distance=$swipeDistance")
+                    Log.d(TAG, "Updated global settings: interval=$interval, distance=$swipeDistance, angle=$swipeAngle")
                 }
                 .setNegativeButton(R.string.cancel, null)
                 .create()
@@ -394,6 +398,210 @@ object FloatingManager {
             dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
             dialog.show()
         }
+    }
+
+    // ===================== 配置方案管理 =====================
+
+    private fun showProfileListDialog() {
+        appContext?.let { context ->
+            val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_profiles, null)
+            val listContainer = dialogView.findViewById<LinearLayout>(R.id.ll_profile_list)
+            val emptyHint = dialogView.findViewById<TextView>(R.id.tv_profiles_empty)
+
+            lateinit var dialog: AlertDialog
+
+            fun refreshRows() {
+                listContainer.removeAllViews()
+                emptyHint.visibility = if (profiles.isEmpty()) View.VISIBLE else View.GONE
+                profiles.forEach { profile ->
+                    val row = LayoutInflater.from(context).inflate(R.layout.item_profile, listContainer, false)
+                    val nameView = row.findViewById<TextView>(R.id.tv_profile_name)
+                    val marker = if (profile.id == activeProfileId) context.getString(R.string.profile_active_suffix) else ""
+                    nameView.text = profile.name + marker
+
+                    row.findViewById<View>(R.id.ll_profile_row)?.setOnClickListener {
+                        applyProfile(profile)
+                        dialog.dismiss()
+                    }
+                    row.findViewById<ImageButton>(R.id.btn_profile_delete)?.setOnClickListener {
+                        showDeleteProfileDialog(profile) { refreshRows() }
+                    }
+                    listContainer.addView(row)
+                }
+            }
+
+            dialog = AlertDialog.Builder(context)
+                .setTitle(R.string.profile_list_title)
+                .setView(dialogView)
+                .setPositiveButton(R.string.profile_save_current) { _, _ ->
+                    showSaveProfileDialog()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .create()
+
+            refreshRows()
+
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+            dialog.show()
+        }
+    }
+
+    private fun showSaveProfileDialog() {
+        appContext?.let { context ->
+            if (clickTargets.isEmpty()) {
+                Toast.makeText(context, R.string.profile_no_targets, Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val inputView = FrameLayout(context)
+            val padding = (16 * context.resources.displayMetrics.density).toInt()
+            inputView.setPadding(padding, 0, padding, 0)
+            val input = EditText(context)
+            input.hint = context.getString(R.string.profile_name_hint)
+            input.setText(context.getString(R.string.profile_default_name, profiles.size + 1))
+            inputView.addView(
+                input,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            val dialog = AlertDialog.Builder(context)
+                .setTitle(R.string.profile_new_title)
+                .setView(inputView)
+                .setPositiveButton(R.string.save) { _, _ ->
+                    val name = input.text.toString().trim()
+                    if (name.isEmpty()) {
+                        Toast.makeText(context, R.string.profile_name_required, Toast.LENGTH_SHORT).show()
+                    } else {
+                        saveCurrentAsProfile(name)
+                    }
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .create()
+
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+            dialog.show()
+        }
+    }
+
+    private fun saveCurrentAsProfile(name: String) {
+        val context = appContext ?: return
+        if (clickTargets.isEmpty()) {
+            Toast.makeText(context, R.string.profile_no_targets, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val profile = ConfigProfile(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            settings = globalSettings,
+            targets = clickTargets.map { ProfileTarget(x = it.x, y = it.y, clickType = it.clickType) }
+        )
+        profiles.add(profile)
+        activeProfileId = profile.id
+        persistProfiles()
+        persistActiveProfileId()
+
+        Toast.makeText(context, context.getString(R.string.profile_saved, name), Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "Saved profile ${profile.id}: name=$name, targets=${profile.targets.size}")
+    }
+
+    private fun showDeleteProfileDialog(profile: ConfigProfile, onDeleted: () -> Unit) {
+        appContext?.let { context ->
+            val dialog = AlertDialog.Builder(context)
+                .setTitle(R.string.profile_delete_title)
+                .setMessage(context.getString(R.string.profile_delete_message, profile.name))
+                .setPositiveButton(R.string.delete) { _, _ ->
+                    deleteProfile(profile)
+                    onDeleted()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .create()
+
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+            dialog.show()
+        }
+    }
+
+    private fun deleteProfile(profile: ConfigProfile) {
+        val context = appContext ?: return
+        profiles.removeAll { it.id == profile.id }
+        if (activeProfileId == profile.id) {
+            activeProfileId = null
+            persistActiveProfileId()
+        }
+        persistProfiles()
+        Toast.makeText(context, R.string.profile_deleted, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun applyProfile(profile: ConfigProfile) {
+        val context = appContext ?: return
+        if (controller?.isClicking == true) return
+
+        // 移除现有目标视图
+        clickTargets.toList().forEach { target ->
+            try {
+                target.view?.let { windowManager?.removeView(it) }
+            } catch (_: Exception) {
+            }
+        }
+        clickTargets.clear()
+
+        // 按方案重建目标：位置夹取到屏幕范围内，数量不超过上限
+        val sizePx = (TARGET_VIEW_SIZE_DP * context.resources.displayMetrics.density).toInt()
+        profile.targets.take(MAX_TARGETS).forEach { position ->
+            val (clampedX, clampedY) = clampOverlayPosition(position.x.toInt(), position.y.toInt(), sizePx, sizePx)
+            val target = ClickTarget(
+                id = UUID.randomUUID().toString(),
+                x = clampedX.toFloat(),
+                y = clampedY.toFloat(),
+                clickType = position.clickType
+            )
+            clickTargets.add(target)
+            createTargetView(target)
+        }
+
+        globalSettings = profile.settings
+        activeProfileId = profile.id
+        persistGlobalSettings()
+        persistAllTargets()
+        persistActiveProfileId()
+
+        // 切换后通常需要微调位置，自动进入编辑模式
+        if (!isEditMode) {
+            toggleEditMode()
+        }
+        syncTargetsToService()
+
+        Toast.makeText(context, context.getString(R.string.profile_applied, profile.name), Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "Applied profile ${profile.id}: name=${profile.name}, targets=${clickTargets.size}")
+    }
+
+    // 目标/设置被手动改动后，当前状态不再对应任何已保存方案
+    private fun clearActiveProfileMark() {
+        if (activeProfileId != null) {
+            activeProfileId = null
+            persistActiveProfileId()
+        }
+    }
+
+    private fun persistProfiles() {
+        sharedPreferences?.edit()
+            ?.putString(KEY_PROFILES, ConfigProfileCodec.profilesToJson(profiles))
+            ?.apply()
+    }
+
+    private fun persistActiveProfileId() {
+        val editor = sharedPreferences?.edit() ?: return
+        val id = activeProfileId
+        if (id != null) {
+            editor.putString(KEY_ACTIVE_PROFILE_ID, id)
+        } else {
+            editor.remove(KEY_ACTIVE_PROFILE_ID)
+        }
+        editor.apply()
     }
 
     fun setTargetPointTouchable(isTouchable: Boolean) {
@@ -430,6 +638,10 @@ object FloatingManager {
         val canEdit = !isClicking
         editButton?.isEnabled = canEdit
         editButton?.alpha = if (canEdit) 1f else 0.5f
+        settingsButton?.isEnabled = canEdit
+        settingsButton?.alpha = if (canEdit) 1f else 0.5f
+        profilesButton?.isEnabled = canEdit
+        profilesButton?.alpha = if (canEdit) 1f else 0.5f
     }
 
     fun updateControlPanelState(isPlaying: Boolean) {
@@ -461,28 +673,66 @@ object FloatingManager {
 
     fun restorePersistedSettings() {
         val prefs = sharedPreferences ?: return
+        if (hasRestoredSettings) return
+        hasRestoredSettings = true
 
-        val targetsJson = prefs.getString(KEY_TARGETS, null) ?: return
+        var legacyFirstTargetSettings: GlobalSettings? = null
+
         try {
-            val array = JSONArray(targetsJson)
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                val target = ClickTarget(
-                    id = obj.getString("id"),
-                    x = obj.getDouble("x").toFloat(),
-                    y = obj.getDouble("y").toFloat(),
-                    clickType = try { ClickType.valueOf(obj.getString("clickType")) } catch (_: Exception) { ClickType.SINGLE },
-                    interval = obj.getLong("interval"),
-                    swipeDistance = obj.getInt("swipeDistance"),
-                    swipeAngle = obj.getInt("swipeAngle")
-                )
-                clickTargets.add(target)
-                createTargetView(target)
+            val targetsJson = prefs.getString(KEY_TARGETS, null)
+            if (targetsJson != null) {
+                val array = JSONArray(targetsJson)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    if (legacyFirstTargetSettings == null) {
+                        // 旧版本把设置逐目标存在 click_targets 里，升级时迁移第一个目标的配置作为全局设置
+                        legacyFirstTargetSettings = ConfigProfileCodec.settingsFromJson(obj.toString())
+                    }
+                    val target = ClickTarget(
+                        id = obj.getString("id"),
+                        x = obj.getDouble("x").toFloat(),
+                        y = obj.getDouble("y").toFloat(),
+                        clickType = ConfigProfileCodec.clickTypeFromRaw(obj.optString("clickType"))
+                    )
+                    clickTargets.add(target)
+                    createTargetView(target)
+                }
             }
-            syncTargetsToService()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to restore targets: ${e.message}")
         }
+
+        globalSettings = prefs.getString(KEY_GLOBAL_SETTINGS, null)
+            ?.let { ConfigProfileCodec.settingsFromJson(it) }
+            ?: legacyFirstTargetSettings
+            ?: GlobalSettings()
+        persistGlobalSettings()
+        syncTargetsToService()
+
+        restoreProfiles(prefs)
+    }
+
+    private fun restoreProfiles(prefs: SharedPreferences) {
+        profiles.clear()
+        val json = prefs.getString(KEY_PROFILES, null)
+        if (json != null) {
+            val loaded = ConfigProfileCodec.profilesFromJson(json)
+            if (loaded != null) {
+                profiles.addAll(loaded)
+            } else {
+                Log.w(TAG, "Failed to restore profiles, ignoring corrupted data")
+            }
+        }
+
+        // 生效标记对应的方案可能已被删除，失效时清空
+        val savedActiveId = prefs.getString(KEY_ACTIVE_PROFILE_ID, null)
+        activeProfileId = savedActiveId?.takeIf { id -> profiles.any { it.id == id } }
+    }
+
+    private fun persistGlobalSettings() {
+        sharedPreferences?.edit()
+            ?.putString(KEY_GLOBAL_SETTINGS, ConfigProfileCodec.settingsToJson(globalSettings))
+            ?.apply()
     }
 
     private fun persistAllTargets() {
@@ -493,9 +743,6 @@ object FloatingManager {
             obj.put("x", t.x.toDouble())
             obj.put("y", t.y.toDouble())
             obj.put("clickType", t.clickType.name)
-            obj.put("interval", t.interval)
-            obj.put("swipeDistance", t.swipeDistance)
-            obj.put("swipeAngle", t.swipeAngle)
             array.put(obj)
         }
         sharedPreferences?.edit()?.putString(KEY_TARGETS, array.toString())?.apply()
@@ -523,13 +770,10 @@ object FloatingManager {
                 id = t.id,
                 x = clickX,
                 y = clickY,
-                clickType = when (t.clickType) {
-                    ClickType.SINGLE -> AutoClickService.ClickType.SINGLE
-                    ClickType.LONG_PRESS -> AutoClickService.ClickType.LONG_PRESS
-                },
-                interval = t.interval,
-                swipeDistance = t.swipeDistance,
-                swipeAngle = t.swipeAngle
+                clickType = t.clickType,
+                interval = globalSettings.interval,
+                swipeDistance = globalSettings.swipeDistance,
+                swipeAngle = globalSettings.swipeAngle
             )
         }
 
@@ -710,6 +954,8 @@ object FloatingManager {
                         target?.let {
                             it.x = params.x.toFloat()
                             it.y = params.y.toFloat()
+                            // 手动改动后不再对应任何已保存方案
+                            clearActiveProfileMark()
                             persistAllTargets()
                             syncTargetsToService()
                             Log.d(TAG, "Drag ended for target ${it.id}: (${it.x}, ${it.y})")
@@ -734,14 +980,18 @@ object FloatingManager {
         playPauseButton = null
         addButton = null
         editButton = null
+        settingsButton = null
+        profilesButton = null
 
         // 清理所有目标视图
         clickTargets.forEach { target ->
             target.view = null
             target.params = null
-            target.settingsButton = null
         }
         clickTargets.clear()
+
+        // 允许下次显示悬浮窗时重新恢复
+        hasRestoredSettings = false
     }
 
     fun hideAllViews() {

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/ll_profile_row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_profile_row"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="10dp">
+
+    <TextView
+        android:id="@+id/tv_profile_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textSize="16sp" />
+
+    <ImageButton
+        android:id="@+id/btn_profile_delete"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:background="@drawable/bg_floating_button_danger"
+        android:contentDescription="@string/delete"
+        android:padding="6dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_delete"
+        android:tint="@color/floating_icon_tint" />
+
+</LinearLayout>

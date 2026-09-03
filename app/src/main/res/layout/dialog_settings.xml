@@ -5,40 +5,11 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <!-- 点击类型 -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/click_type"
-        android:textSize="16sp"
-        android:textStyle="bold" />
-
-    <RadioGroup
-        android:id="@+id/rg_click_type"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp">
-
-        <RadioButton
-            android:id="@+id/rb_click_type_single"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/click_type_single" />
-
-        <RadioButton
-            android:id="@+id/rb_click_type_long_press"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/click_type_long_press" />
-    </RadioGroup>
-
-    <!-- 单次点击：间隔时间 -->
+    <!-- 单次触控目标：间隔时间（全局） -->
     <TextView
         android:id="@+id/tv_interval_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
         android:text="@string/click_interval_label"
         android:textSize="16sp"
         android:textStyle="bold" />
@@ -52,7 +23,7 @@
         android:inputType="number"
         android:text="100" />
 
-    <!-- 长按：推动距离 -->
+    <!-- 持续触控目标：推动距离（全局） -->
     <TextView
         android:id="@+id/tv_swipe_distance_label"
         android:layout_width="wrap_content"
@@ -60,8 +31,7 @@
         android:layout_marginTop="16dp"
         android:text="@string/swipe_distance_label"
         android:textSize="16sp"
-        android:textStyle="bold"
-        android:visibility="gone" />
+        android:textStyle="bold" />
 
     <EditText
         android:id="@+id/et_swipe_distance"
@@ -70,10 +40,9 @@
         android:layout_marginTop="8dp"
         android:hint="0"
         android:inputType="number"
-        android:text="0"
-        android:visibility="gone" />
+        android:text="0" />
 
-    <!-- 长按：滑动方向 -->
+    <!-- 持续触控目标：滑动方向（全局） -->
     <TextView
         android:id="@+id/tv_swipe_direction_label"
         android:layout_width="wrap_content"
@@ -81,16 +50,14 @@
         android:layout_marginTop="16dp"
         android:text="@string/swipe_direction_label"
         android:textSize="16sp"
-        android:textStyle="bold"
-        android:visibility="gone" />
+        android:textStyle="bold" />
 
     <RadioGroup
         android:id="@+id/rg_swipe_direction"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:orientation="horizontal"
-        android:visibility="gone">
+        android:orientation="horizontal">
 
         <RadioButton
             android:id="@+id/rb_dir_up"
@@ -121,5 +88,12 @@
             android:text="@string/swipe_direction_right" />
 
     </RadioGroup>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/target_type_hint"
+        android:textSize="12sp" />
 
 </LinearLayout>
