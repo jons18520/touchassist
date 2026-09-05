@@ -123,9 +123,11 @@ class AutoClickService : AccessibilityService(), GestureDispatcher, ClickService
         FloatingManager.syncTargetsToService()
         FloatingManager.setClickingState(true)
         FloatingManager.setTargetPointTouchable(false)
-        FloatingManager.updateControlPanelState(true)
 
         _isClicking.value = true
+
+        // 面板置灰依赖 controller.isClicking，必须先置位再刷新，否则读到旧值 false 不置灰
+        FloatingManager.updateControlPanelState(true)
 
         clickTargetsById.values.forEach { target ->
             if (target.clickType == ClickType.SINGLE) {

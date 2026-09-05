@@ -35,9 +35,11 @@ object FloatingManager {
 
     private var playPauseButton: ImageButton? = null
     private var addButton: ImageButton? = null
+    private var removeButton: ImageButton? = null
     private var editButton: ImageButton? = null
     private var settingsButton: ImageButton? = null
     private var profilesButton: ImageButton? = null
+    private var exitButton: ImageButton? = null
     private var sharedPreferences: SharedPreferences? = null
 
     // 多点击目标管理
@@ -191,6 +193,7 @@ object FloatingManager {
         // 更新服务中的目标列表
         syncTargetsToService()
         persistAllTargets()
+        updatePanelButtonsEnabledState()
     }
 
     private fun setupControlPanelButtons() {
@@ -200,8 +203,8 @@ object FloatingManager {
             editButton = view.findViewById(R.id.btn_edit)
             settingsButton = view.findViewById(R.id.btn_settings)
             profilesButton = view.findViewById(R.id.btn_profiles)
-            val removeButton = view.findViewById<ImageButton>(R.id.btn_remove)
-            val exitButton = view.findViewById<ImageButton>(R.id.btn_exit)
+            removeButton = view.findViewById(R.id.btn_remove)
+            exitButton = view.findViewById(R.id.btn_exit)
 
             addButton?.setOnClickListener {
                 addNewTarget()
@@ -267,18 +270,20 @@ object FloatingManager {
                 exitButton?.let { setupControlPanelButtonDrag(it, controlPanelView!!, controlPanelParams!!) }
             }
 
-            updatePlayPauseButtonEnabledState()
+            updatePanelButtonsEnabledState()
 
         }
     }
 
     private fun deleteLastTarget() {
+        if (controller?.isClicking == true) return
         if (clickTargets.isEmpty()) return
         val target = clickTargets.last()
         deleteTarget(target)
     }
 
     private fun addNewTarget() {
+        if (controller?.isClicking == true) return
         if (clickTargets.size >= MAX_TARGETS) {
             Toast.makeText(appContext, R.string.max_targets_reached, Toast.LENGTH_SHORT).show()
             return
@@ -311,6 +316,7 @@ object FloatingManager {
         if (!isEditMode) {
             toggleEditMode()
         }
+        updatePanelButtonsEnabledState()
     }
 
     private fun toggleEditMode() {
@@ -332,7 +338,7 @@ object FloatingManager {
             }
         }
 
-        updatePlayPauseButtonEnabledState()
+        updatePanelButtonsEnabledState()
 
         // 同步目标点触摸性：编辑模式且未点击时可拖拽定位，其余情况不拦截触摸，
         // 确保暂停/非编辑状态下人工可以正常点击到下层应用。
@@ -573,6 +579,7 @@ object FloatingManager {
         if (!isEditMode) {
             toggleEditMode()
         }
+        updatePanelButtonsEnabledState()
         syncTargetsToService()
 
         Toast.makeText(context, context.getString(R.string.profile_applied, profile.name), Toast.LENGTH_SHORT).show()
@@ -629,7 +636,7 @@ object FloatingManager {
     }
 
 
-    private fun updatePlayPauseButtonEnabledState() {
+    private fun updatePanelButtonsEnabledState() {
         val hasTargets = clickTargets.isNotEmpty()
         val isClicking = controller?.isClicking == true
         val canStart = (!isEditMode || isClicking) && hasTargets
@@ -642,6 +649,14 @@ object FloatingManager {
         settingsButton?.alpha = if (canEdit) 1f else 0.5f
         profilesButton?.isEnabled = canEdit
         profilesButton?.alpha = if (canEdit) 1f else 0.5f
+        exitButton?.isEnabled = canEdit
+        exitButton?.alpha = if (canEdit) 1f else 0.5f
+        val canAdd = canEdit && clickTargets.size < MAX_TARGETS
+        addButton?.isEnabled = canAdd
+        addButton?.alpha = if (canAdd) 1f else 0.5f
+        val canRemove = canEdit && hasTargets
+        removeButton?.isEnabled = canRemove
+        removeButton?.alpha = if (canRemove) 1f else 0.5f
     }
 
     fun updateControlPanelState(isPlaying: Boolean) {
@@ -651,7 +666,7 @@ object FloatingManager {
         button.setImageResource(
             if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
         )
-        updatePlayPauseButtonEnabledState()
+        updatePanelButtonsEnabledState()
     }
 
 
@@ -708,6 +723,7 @@ object FloatingManager {
             ?: GlobalSettings()
         persistGlobalSettings()
         syncTargetsToService()
+        updatePanelButtonsEnabledState()
 
         restoreProfiles(prefs)
     }
@@ -979,9 +995,11 @@ object FloatingManager {
         controlPanelParams = null
         playPauseButton = null
         addButton = null
+        removeButton = null
         editButton = null
         settingsButton = null
         profilesButton = null
+        exitButton = null
 
         // 清理所有目标视图
         clickTargets.forEach { target ->
