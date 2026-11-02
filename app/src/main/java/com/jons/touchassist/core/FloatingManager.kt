@@ -22,7 +22,7 @@ object FloatingManager {
     private const val KEY_PROFILES = "profiles"
     private const val KEY_ACTIVE_PROFILE_ID = "active_profile_id"
 
-    private const val MAX_TARGETS = 5
+    private const val MAX_TARGETS = 10
 
     // 目标视图尺寸（dp）- 必须与 layout_target_point.xml 中的尺寸一致
     private const val TARGET_VIEW_SIZE_DP = 36
